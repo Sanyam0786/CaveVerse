@@ -11,7 +11,7 @@ class VideoCalling {
     private peer: Peer | null = null;
     private initializationPromise: Promise<Peer> | null = null;
 
-    private constructor() {}
+    private constructor() { }
 
     public static getInstance(): VideoCalling {
         if (!VideoCalling.instance) {

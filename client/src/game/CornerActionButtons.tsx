@@ -11,21 +11,32 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "../components/ui/popover";
+import MiniMap from "../components/MiniMap";
 
 const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
-    const isInGameCss = "bg-white text-white-foreground hover:bg-white/90";
     const isInLobbyCss =
         "bg-primary text-primary-foreground hover:bg-primary/90";
-    const buttonCss = `shadow-xs p-2 rounded-full cursor-pointer ${
-        isInGame ? isInGameCss : isInLobbyCss
-    }`;
+    const buttonCss = `shadow-xs p-2 rounded-full cursor-pointer ${isInLobbyCss}`;
 
+    // ─── In-game: show minimap bottom-left ─────────────────────────────────
+    if (isInGame) {
+        return (
+            <div
+                style={{
+                    position: "fixed",
+                    bottom: "1.75rem",
+                    left: "1.75rem",
+                    zIndex: 50,
+                }}
+            >
+                <MiniMap />
+            </div>
+        );
+    }
+
+    // ─── Lobby: keep original social / info buttons ─────────────────────────
     return (
-        <div
-            className={`absolute bottom-7 flex items-center gap-3 ${
-                isInGame ? "left-12" : "right-12"
-            }`}
-        >
+        <div className="absolute bottom-7 right-12 flex items-center gap-3">
             {/* Info */}
             <Popover>
                 <Tooltip>
@@ -36,12 +47,7 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
                             </div>
                         </TooltipTrigger>
                     </PopoverTrigger>
-                    <TooltipContent
-                        className={!isInGame ? "bg-primary" : "text-primary"}
-                        customTooltipArrow={
-                            !isInGame ? "bg-primary fill-primary" : undefined
-                        }
-                    >
+                    <TooltipContent className="bg-primary" customTooltipArrow="bg-primary fill-primary">
                         Project information
                     </TooltipContent>
                     <PopoverContent className="z-[100] w-fit ml-5 mb-3">
@@ -58,17 +64,10 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
                         target="_blank"
                         className={buttonCss}
                     >
-                        <GitHubLogo
-                            fill={`${isInGame ? "#000000" : "#ffffff"}`}
-                        />
+                        <GitHubLogo fill="#ffffff" />
                     </a>
                 </TooltipTrigger>
-                <TooltipContent
-                    className={!isInGame ? "bg-primary" : "text-primary"}
-                    customTooltipArrow={
-                        !isInGame ? "bg-primary fill-primary" : undefined
-                    }
-                >
+                <TooltipContent className="bg-primary" customTooltipArrow="bg-primary fill-primary">
                     Github repository
                 </TooltipContent>
             </Tooltip>
@@ -81,15 +80,10 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
                         target="_blank"
                         className={buttonCss}
                     >
-                        <XLogo fill={`${isInGame ? "#000000" : "#ffffff"}`} />
+                        <XLogo fill="#ffffff" />
                     </a>
                 </TooltipTrigger>
-                <TooltipContent
-                    className={!isInGame ? "bg-primary" : "text-primary"}
-                    customTooltipArrow={
-                        !isInGame ? "bg-primary fill-primary" : undefined
-                    }
-                >
+                <TooltipContent className="bg-primary" customTooltipArrow="bg-primary fill-primary">
                     X / Twitter
                 </TooltipContent>
             </Tooltip>

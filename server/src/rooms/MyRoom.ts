@@ -35,27 +35,27 @@ export class MyRoom extends Room<MyRoomState> {
             mainOffice: {
                 members: this.state.mainOfficeMembers,
                 chat: this.state.mainOfficeChat,
-                name: "main office",
+                name: "Main Workstation",
             },
             eastOffice: {
                 members: this.state.eastOfficeMembers,
                 chat: this.state.eastOfficeChat,
-                name: "east office",
+                name: "Conference Room",
             },
             westOffice: {
                 members: this.state.westOfficeMembers,
                 chat: this.state.westOfficeChat,
-                name: "west office",
+                name: "Lounge & Chill",
             },
             northOffice1: {
                 members: this.state.northOffice1Members,
                 chat: this.state.northOffice1Chat,
-                name: "north 1 office",
+                name: "Meeting Room 1",
             },
             northOffice2: {
                 members: this.state.northOffice2Members,
                 chat: this.state.northOffice2Chat,
-                name: "north 2 office",
+                name: "Meeting Room 2",
             },
         };
 

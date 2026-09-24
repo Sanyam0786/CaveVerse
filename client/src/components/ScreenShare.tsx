@@ -86,11 +86,10 @@ const ScreenShare = ({
                         </DialogTitle>
                     </DialogHeader>
                     <div
-                        className={`grid ${
-                            peerStreams.size > 0 || myStream
-                                ? "grid-cols-2 auto-rows-max"
-                                : "text-center place-items-center"
-                        } h-full overflow-auto gap-2 mt-2 py-2`}
+                        className={`grid ${peerStreams.size > 0 || myStream
+                            ? "grid-cols-2 auto-rows-max"
+                            : "text-center place-items-center"
+                            } h-full overflow-auto gap-2 mt-2 py-2`}
                     >
                         {peerStreams.size > 0 || myStream ? (
                             <>

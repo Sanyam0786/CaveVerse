@@ -23,6 +23,9 @@ const Chat = ({
         (state) => state.chat.globalChatMessages
     );
     const showOfficeChat = useAppSelector((state) => state.chat.showOfficeChat);
+    const currentOfficeName = useAppSelector(
+        (state) => state.chat.currentOfficeName
+    );
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -74,18 +77,16 @@ const Chat = ({
                     {showOfficeChat ? (
                         <div className="flex items-center justify-between gap-1 w-full mt-3">
                             <Button
-                                className={`${buttonCss} ${
-                                    activeChat === "Global" && activeChatCss
-                                }`}
+                                className={`${buttonCss} ${activeChat === "Global" && activeChatCss
+                                    }`}
                                 onClick={() => setActiveChat("Global")}
                             >
                                 Global Chat
                             </Button>
                             <Button
-                                className={`${buttonCss} ${
-                                    activeChat === "OfficeSpecific" &&
+                                className={`${buttonCss} ${activeChat === "OfficeSpecific" &&
                                     activeChatCss
-                                }`}
+                                    }`}
                                 onClick={() => setActiveChat("OfficeSpecific")}
                             >
                                 Office Chat
@@ -125,43 +126,41 @@ const Chat = ({
                     >
                         {activeChat === "Global"
                             ? globalChatMessages.map((msg, i) => {
-                                  return (
-                                      <div
-                                          key={i}
-                                          className={`flex gap-2 text-sm ${
-                                              msg.type === "REGULAR_MESSAGE"
-                                                  ? "text-white"
-                                                  : msg.type === "PLAYER_JOINED"
-                                                  ? "text-green-400"
-                                                  : "text-red-400"
-                                          }`}
-                                      >
-                                          <p className="font-semibold">
-                                              {msg.username}:
-                                          </p>
-                                          <p>{msg.message}</p>
-                                      </div>
-                                  );
-                              })
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`flex gap-2 text-sm ${msg.type === "REGULAR_MESSAGE"
+                                            ? "text-white"
+                                            : msg.type === "PLAYER_JOINED"
+                                                ? "text-green-400"
+                                                : "text-red-400"
+                                            }`}
+                                    >
+                                        <p className="font-semibold">
+                                            {msg.username}:
+                                        </p>
+                                        <p>{msg.message}</p>
+                                    </div>
+                                );
+                            })
                             : officeChatMessages.map((msg, i) => {
-                                  return (
-                                      <div
-                                          key={i}
-                                          className={`flex gap-2 text-sm ${
-                                              msg.type === "REGULAR_MESSAGE"
-                                                  ? "text-white"
-                                                  : msg.type === "PLAYER_JOINED"
-                                                  ? "text-green-400"
-                                                  : "text-red-400"
-                                          }`}
-                                      >
-                                          <p className="font-semibold">
-                                              {msg.username}:
-                                          </p>
-                                          <p>{msg.message}</p>
-                                      </div>
-                                  );
-                              })}
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`flex gap-2 text-sm ${msg.type === "REGULAR_MESSAGE"
+                                            ? "text-white"
+                                            : msg.type === "PLAYER_JOINED"
+                                                ? "text-green-400"
+                                                : "text-red-400"
+                                            }`}
+                                    >
+                                        <p className="font-semibold">
+                                            {msg.username}:
+                                        </p>
+                                        <p>{msg.message}</p>
+                                    </div>
+                                );
+                            })}
                     </div>
                 </div>
                 <form

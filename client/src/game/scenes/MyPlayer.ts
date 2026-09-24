@@ -12,17 +12,23 @@ import screenSharing from "../service/ScreenSharing";
 import {
     clearOfficeChat,
     setShowOfficeChat,
+    setCurrentOfficeName,
 } from "../../app/features/chat/chatSlice";
 import {
     clearPlayerNameMap,
     removeAllPeerConnectionsForScreenSharing,
     setPlayerNameMap,
 } from "../../app/features/webRtc/screenSlice";
-import { officeNames, sanitizeUserIdForScreenSharing } from "../../lib/utils";
+import {
+    officeNames,
+    sanitizeUserIdForScreenSharing,
+    OFFICE_PRETTY_NAMES,
+} from "../../lib/utils";
 
 export class MyPlayer extends Player {
     private static SPEED = 300;
-    private static PROXIMITY_CONNECT_DELAY = 500;
+    private static SPRINT_SPEED = 600;
+    private static DOUBLE_TAP_DELAY = 320; // max time in ms between taps to trigger sprint
 
     private lastX: number;
     private lastY: number;
@@ -38,6 +44,16 @@ export class MyPlayer extends Player {
         string,
         { enterTime: number; connected: boolean }
     >();
+
+    // Double-tap sprint tracking
+    private lastTapTimes = {
+        left: 0,
+        right: 0,
+        up: 0,
+        down: 0,
+    };
+    private isSprinting = false;
+    private sprintDirection: "left" | "right" | "up" | "down" | null = null;
 
     constructor(
         scene: Phaser.Scene,
@@ -62,23 +78,76 @@ export class MyPlayer extends Player {
 
     /** Handles current player's movements and notifies the server. */
     private handlePlayerMovements() {
+        const now = Date.now();
+
+        // Detect double tap on arrow keys
+        const leftJustDown = Phaser.Input.Keyboard.JustDown(this.cursorKeys.left);
+        const rightJustDown = Phaser.Input.Keyboard.JustDown(this.cursorKeys.right);
+        const upJustDown = Phaser.Input.Keyboard.JustDown(this.cursorKeys.up);
+        const downJustDown = Phaser.Input.Keyboard.JustDown(this.cursorKeys.down);
+
+        if (leftJustDown) {
+            if (now - this.lastTapTimes.left <= MyPlayer.DOUBLE_TAP_DELAY) {
+                this.isSprinting = true;
+                this.sprintDirection = "left";
+            }
+            this.lastTapTimes.left = now;
+        }
+
+        if (rightJustDown) {
+            if (now - this.lastTapTimes.right <= MyPlayer.DOUBLE_TAP_DELAY) {
+                this.isSprinting = true;
+                this.sprintDirection = "right";
+            }
+            this.lastTapTimes.right = now;
+        }
+
+        if (upJustDown) {
+            if (now - this.lastTapTimes.up <= MyPlayer.DOUBLE_TAP_DELAY) {
+                this.isSprinting = true;
+                this.sprintDirection = "up";
+            }
+            this.lastTapTimes.up = now;
+        }
+
+        if (downJustDown) {
+            if (now - this.lastTapTimes.down <= MyPlayer.DOUBLE_TAP_DELAY) {
+                this.isSprinting = true;
+                this.sprintDirection = "down";
+            }
+            this.lastTapTimes.down = now;
+        }
+
+        // Cancel sprint when the sprinting key is released
+        if (this.sprintDirection && !this.cursorKeys[this.sprintDirection]?.isDown) {
+            this.isSprinting = false;
+            this.sprintDirection = null;
+        }
+
+        const shouldSprint = this.isSprinting || (this.cursorKeys.shift?.isDown ?? false);
+        const currentSpeed = shouldSprint ? MyPlayer.SPRINT_SPEED : MyPlayer.SPEED;
+        const animTimeScale = shouldSprint ? 1.75 : 1;
+
         let vx = 0;
         let vy = 0;
 
         // set velocity x & y and player's animation
         if (this.cursorKeys.left.isDown) {
-            vx -= MyPlayer.SPEED;
-            this.playAnimation(`${this.character}_left_run`);
+            vx -= currentSpeed;
+            this.playAnimation(`${this.character}_left_run`, animTimeScale);
         } else if (this.cursorKeys.right.isDown) {
-            vx += MyPlayer.SPEED;
-            this.playAnimation(`${this.character}_right_run`);
+            vx += currentSpeed;
+            this.playAnimation(`${this.character}_right_run`, animTimeScale);
         } else if (this.cursorKeys.up.isDown) {
-            vy -= MyPlayer.SPEED;
-            this.playAnimation(`${this.character}_up_run`);
+            vy -= currentSpeed;
+            this.playAnimation(`${this.character}_up_run`, animTimeScale);
         } else if (this.cursorKeys.down.isDown) {
-            vy += MyPlayer.SPEED;
-            this.playAnimation(`${this.character}_down_run`);
+            vy += currentSpeed;
+            this.playAnimation(`${this.character}_down_run`, animTimeScale);
         } else {
+            this.isSprinting = false;
+            this.sprintDirection = null;
+
             const currentAnimKey = this.getCurrentAnimationKey();
             const parts = currentAnimKey.split("_");
             parts[2] = "idle"; // getting the last "run" animation and changing it to idle
@@ -86,7 +155,7 @@ export class MyPlayer extends Player {
 
             // this prevents sending idle animation multiple times to the server
             if (currentAnimKey !== idleAnim) {
-                this.playAnimation(idleAnim);
+                this.playAnimation(idleAnim, 1);
                 this.network.updatePlayer(this.x, this.y, idleAnim);
             }
         }
@@ -112,6 +181,8 @@ export class MyPlayer extends Player {
         this.proximityPlayers.clear();
         this.proximityTimers.clear();
 
+        const prettyName = officeName ? OFFICE_PRETTY_NAMES[officeName] || officeName : null;
+        store.dispatch(setCurrentOfficeName(prettyName));
         store.dispatch(setShowOfficeChat(true));
 
         // if player has previously given webcam access then upon joining the office,
@@ -140,6 +211,7 @@ export class MyPlayer extends Player {
     private leaveOffice() {
         this.network.leaveOffice(this.currentOffice);
 
+        store.dispatch(setCurrentOfficeName(null));
         store.dispatch(clearOfficeChat());
         store.dispatch(setShowOfficeChat(false));
         store.dispatch(removeAllPeerConnectionsForVideoCalling());

@@ -13,7 +13,7 @@ class ScreenSharing {
     private initializationPromise: Promise<Peer> | null = null;
     myScreenStream: MediaStream;
 
-    private constructor() {}
+    private constructor() { }
 
     public static getInstance(): ScreenSharing {
         if (!ScreenSharing.instance) {

@@ -13,6 +13,7 @@ const chatSlice = createSlice({
         globalChatMessages: new Array<ChatMessageType>(),
         focused: false,
         showOfficeChat: false,
+        currentOfficeName: null as string | null,
     },
     reducers: {
         /* For office specific chat messages */
@@ -30,6 +31,12 @@ const chatSlice = createSlice({
         },
         setShowOfficeChat: (state, action: PayloadAction<boolean>) => {
             state.showOfficeChat = action.payload;
+        },
+        setCurrentOfficeName: (
+            state,
+            action: PayloadAction<string | null>
+        ) => {
+            state.currentOfficeName = action.payload;
         },
 
         /* For global chat messages */
@@ -50,6 +57,7 @@ export const {
     clearOfficeChat,
     addOfficeChat,
     setShowOfficeChat,
+    setCurrentOfficeName,
     pushNewGlobalMessage,
     addGlobalChat,
 } = chatSlice.actions;

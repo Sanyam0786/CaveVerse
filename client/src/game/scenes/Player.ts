@@ -8,6 +8,7 @@ export class Player extends Phaser.GameObjects.Container {
     private isMicOn: boolean;
     private isWebcamOn: boolean;
     private isDisconnected: boolean;
+    public username: string;
 
     constructor(
         scene: Phaser.Scene,
@@ -19,6 +20,7 @@ export class Player extends Phaser.GameObjects.Container {
         isWebcamOn: boolean
     ) {
         super(scene, x, y);
+        this.username = username;
 
         this.sprite = scene.add.sprite(
             0,
@@ -105,7 +107,10 @@ export class Player extends Phaser.GameObjects.Container {
         this.add(this.webcamIcon);
     }
 
-    playAnimation(animationKey: string) {
+    playAnimation(animationKey: string, timeScale: number = 1) {
+        if (this.sprite.anims) {
+            this.sprite.anims.timeScale = timeScale;
+        }
         this.sprite.play(animationKey, true);
     }
 

@@ -8,4 +8,5 @@ export enum Event {
     INITIALIZE_PLAYER = "initialize-player",
     PLAYER_JOINED = "player-joined",
     PLAYER_LEFT = "player-left",
+    MINIMAP_UPDATE = "minimap-update",
 }

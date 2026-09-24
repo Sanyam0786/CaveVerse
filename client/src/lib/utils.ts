@@ -25,3 +25,11 @@ export type officeNames =
     | "northOffice1"
     | "northOffice2"
     | null;
+
+export const OFFICE_PRETTY_NAMES: Record<string, string> = {
+    mainOffice: "Main Workstation",
+    eastOffice: "Conference Room",
+    westOffice: "Lounge & Chill",
+    northOffice1: "Meeting Room 1",
+    northOffice2: "Meeting Room 2",
+};

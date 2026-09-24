@@ -7,6 +7,7 @@ import store from "../../app/store";
 
 export class GameScene extends Phaser.Scene {
     private static EPSILON = 0.5;
+    private static MINIMAP_THROTTLE_MS = 100;
 
     private mapLayer: Phaser.Tilemaps.TilemapLayer;
     private map!: Phaser.Tilemaps.Tilemap;
@@ -14,6 +15,7 @@ export class GameScene extends Phaser.Scene {
     private cursorKeys: Phaser.Types.Input.Keyboard.CursorKeys;
     private myPlayer: MyPlayer;
     private otherPlayers = new Map<string, Player>();
+    private lastMinimapEmit = 0;
 
     constructor() {
         super({ key: "GameScene" });
@@ -263,6 +265,42 @@ export class GameScene extends Phaser.Scene {
         }
 
         this.myPlayer?.update();
+
+        // Emit minimap positions throttled to ~10fps
+        if (time - this.lastMinimapEmit >= GameScene.MINIMAP_THROTTLE_MS) {
+            this.lastMinimapEmit = time;
+            const players: { sessionId: string; x: number; y: number; isMe: boolean; username: string; anim?: string }[] = [
+                {
+                    sessionId: "me",
+                    x: this.myPlayer.x,
+                    y: this.myPlayer.y,
+                    isMe: true,
+                    username: this.myPlayer.username || "You",
+                    anim: this.myPlayer.getCurrentAnimationKey ? this.myPlayer.getCurrentAnimationKey() : undefined,
+                },
+            ];
+            this.otherPlayers.forEach((player, sessionId) => {
+                players.push({
+                    sessionId,
+                    x: player.x,
+                    y: player.y,
+                    isMe: false,
+                    username: player.username || "Player",
+                    anim: player.getCurrentAnimationKey ? player.getCurrentAnimationKey() : undefined,
+                });
+            });
+
+            const cam = this.cameras?.main?.worldView
+                ? {
+                      x: this.cameras.main.worldView.x,
+                      y: this.cameras.main.worldView.y,
+                      width: this.cameras.main.worldView.width,
+                      height: this.cameras.main.worldView.height,
+                  }
+                : null;
+
+            phaserEvents.emit(Event.MINIMAP_UPDATE, { players, cam });
+        }
 
         // interpolate other players.
         this.otherPlayers.forEach((player, sessionId) => {

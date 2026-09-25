@@ -22,12 +22,7 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
     if (isInGame) {
         return (
             <div
-                style={{
-                    position: "fixed",
-                    bottom: "1.75rem",
-                    left: "1.75rem",
-                    zIndex: 20,
-                }}
+                className="fixed bottom-7 left-7 z-20 hidden md:block"
             >
                 <MiniMap />
             </div>

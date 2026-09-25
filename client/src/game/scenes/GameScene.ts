@@ -180,6 +180,21 @@ export class GameScene extends Phaser.Scene {
         this.input.keyboard.disableGlobalCapture();
     }
 
+    setTouchDirection(dir: {
+        left?: boolean;
+        right?: boolean;
+        up?: boolean;
+        down?: boolean;
+        sprint?: boolean;
+    }) {
+        if (!this.myPlayer) return;
+        if (dir.left !== undefined) this.myPlayer.touchInput.left = dir.left;
+        if (dir.right !== undefined) this.myPlayer.touchInput.right = dir.right;
+        if (dir.up !== undefined) this.myPlayer.touchInput.up = dir.up;
+        if (dir.down !== undefined) this.myPlayer.touchInput.down = dir.down;
+        if (dir.sprint !== undefined) this.myPlayer.touchInput.sprint = dir.sprint;
+    }
+
     playerStoppedWebcam() {
         this.myPlayer.playerStoppedWebcam();
     }

@@ -49,6 +49,15 @@ export class MyPlayer extends Player {
     private isSprinting = false;
     private sprintDirection: "left" | "right" | "up" | "down" | null = null;
 
+    // Mobile / Touch D-Pad input
+    public touchInput = {
+        left: false,
+        right: false,
+        up: false,
+        down: false,
+        sprint: false,
+    };
+
     constructor(
         scene: Phaser.Scene,
         x: number,
@@ -118,7 +127,12 @@ export class MyPlayer extends Player {
             this.sprintDirection = null;
         }
 
-        const shouldSprint = this.isSprinting || (this.cursorKeys.shift?.isDown ?? false);
+        const isLeft = (this.cursorKeys?.left?.isDown ?? false) || this.touchInput.left;
+        const isRight = (this.cursorKeys?.right?.isDown ?? false) || this.touchInput.right;
+        const isUp = (this.cursorKeys?.up?.isDown ?? false) || this.touchInput.up;
+        const isDown = (this.cursorKeys?.down?.isDown ?? false) || this.touchInput.down;
+
+        const shouldSprint = this.isSprinting || (this.cursorKeys?.shift?.isDown ?? false) || this.touchInput.sprint;
         const currentSpeed = shouldSprint ? MyPlayer.SPRINT_SPEED : MyPlayer.SPEED;
         const animTimeScale = shouldSprint ? 1.75 : 1;
 
@@ -126,16 +140,16 @@ export class MyPlayer extends Player {
         let vy = 0;
 
         // set velocity x & y and player's animation
-        if (this.cursorKeys.left.isDown) {
+        if (isLeft) {
             vx -= currentSpeed;
             this.playAnimation(`${this.character}_left_run`, animTimeScale);
-        } else if (this.cursorKeys.right.isDown) {
+        } else if (isRight) {
             vx += currentSpeed;
             this.playAnimation(`${this.character}_right_run`, animTimeScale);
-        } else if (this.cursorKeys.up.isDown) {
+        } else if (isUp) {
             vy -= currentSpeed;
             this.playAnimation(`${this.character}_up_run`, animTimeScale);
-        } else if (this.cursorKeys.down.isDown) {
+        } else if (isDown) {
             vy += currentSpeed;
             this.playAnimation(`${this.character}_down_run`, animTimeScale);
         } else {

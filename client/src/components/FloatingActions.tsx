@@ -50,13 +50,13 @@ const FloatingActions = ({
                 ease: [0.25, 0.8, 0.25, 1],
                 delay: 0.3,
             }}
-            className={`absolute bottom-7 ${
+            className={`absolute bottom-28 left-1/2 -translate-x-1/2 md:translate-x-0 md:bottom-7 ${
                 !showChat
-                    ? "left-[40%]"
+                    ? "md:left-[40%]"
                     : hasMediaStarted
-                    ? "left-[calc((52%-384px)+48px)]"
-                    : "left-[calc((55%-384px)+48px)]"
-            } p-4 flex gap-4 bg-[#121214]/50 backdrop-blur-xs shadow-black/30 shadow-lg rounded-lg`}
+                    ? "md:left-[calc((52%-384px)+48px)]"
+                    : "md:left-[calc((55%-384px)+48px)]"
+            } p-2 md:p-4 flex gap-2 md:gap-4 bg-[#121214]/70 md:bg-[#121214]/50 backdrop-blur-xs shadow-black/30 shadow-lg rounded-lg z-30`}
         >
             <TooltipProvider>
                 {/* Chat */}

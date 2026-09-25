@@ -8,6 +8,8 @@ import { AnimatePresence } from "framer-motion";
 import VideoCall from "./components/VideoCall";
 import CornerActionButtons from "./game/CornerActionButtons";
 
+import MobileDPad from "./components/MobileDPad";
+
 function App() {
     const roomJoined = useAppSelector((state) => state.room.roomJoined);
     const showOfficeChat = useAppSelector((state) => state.chat.showOfficeChat);
@@ -25,6 +27,7 @@ function App() {
                 <>
                     {showChat && <Chat setShowChat={setShowChat} />}
                     <VideoCall />
+                    <MobileDPad />
                     <AnimatePresence mode="wait">
                         <FloatingActions
                             key="floating-buttons"

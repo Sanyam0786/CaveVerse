@@ -1,38 +1,72 @@
+import { useRef, useEffect } from "react";
 import { useAppSelector } from "../app/hooks";
-import { VideoPlayer } from "./VideoPlayer";
+import { Track } from "livekit-client";
 
 const VideoCall = () => {
-    const myWebcamStream = useAppSelector(
-        (state) => state.webcam.myWebcamStream
+    const remoteParticipants = useAppSelector(
+        (state) => state.livekit.remoteParticipants
     );
-    const peerStreams = useAppSelector((state) => state.webcam.peerStreams);
-    const isDisconnectedFromVideoCalls = useAppSelector(
-        (state) => state.webcam.isDisconnectedFromVideoCalls
+    const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
+    const isConnected = useAppSelector((state) => state.livekit.isConnected);
+
+    // Collect remote camera + mic video tracks
+    const remoteCameraTracks = Array.from(
+        remoteParticipants.entries()
+    ).flatMap(([participantId, tracks]) =>
+        tracks
+            .filter(
+                (t) =>
+                    t.source === Track.Source.Camera && t.kind === "video"
+            )
+            .map((t) => ({ participantId, track: t }))
     );
 
-    // if user is disconnected from video calls then do not show any webcams
-    if (isDisconnectedFromVideoCalls) return;
+    // Don't show anything if not connected or no tracks
+    if (!isConnected) return null;
+    if (!isCameraOn && remoteCameraTracks.length === 0) return null;
 
     return (
         <div className="absolute left-[35px] top-[10px] max-h-screen flex flex-col flex-wrap gap-2">
-            {myWebcamStream && (
-                <VideoPlayer
-                    stream={myWebcamStream}
+            {remoteCameraTracks.map(({ participantId, track }) => (
+                <TrackVideo
+                    key={track.trackSid}
+                    track={track.mediaStreamTrack}
                     className="w-48 border-2"
-                    // muting own video
-                    muted
                 />
-            )}
-            {Array.from(peerStreams.entries()).map(([key, value]) => {
-                return (
-                    <VideoPlayer
-                        stream={value.stream}
-                        className="w-48 border-2"
-                        key={key}
-                    />
-                );
-            })}
+            ))}
         </div>
+    );
+};
+
+/**
+ * Renders a single MediaStreamTrack in a <video> element.
+ */
+const TrackVideo = ({
+    track,
+    className,
+    muted = false,
+}: {
+    track: MediaStreamTrack;
+    className?: string;
+    muted?: boolean;
+}) => {
+    const ref = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        if (!ref.current || !track) return;
+        const stream = new MediaStream([track]);
+        ref.current.srcObject = stream;
+        ref.current.play().catch(() => {});
+    }, [track]);
+
+    return (
+        <video
+            ref={ref}
+            autoPlay
+            playsInline
+            muted={muted}
+            className={`rounded-lg ${className ?? ""}`}
+        />
     );
 };
 

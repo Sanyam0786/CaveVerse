@@ -3,21 +3,19 @@ import { Button } from "./ui/button";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogFooter,
     DialogHeader,
     DialogTitle,
 } from "./ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import phaserGame from "../game/main";
-import { GameScene } from "../game/scenes/GameScene";
-import { useEffect, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Toaster } from "sonner";
 import { toast } from "sonner";
 import { useAppSelector } from "../app/hooks";
-import { VideoPlayer } from "./VideoPlayer";
+import { Track } from "livekit-client";
+import liveKitService from "../game/service/LiveKitService";
 import FullScreenPlayer from "./FullScreenPlayer";
-import store from "../app/store";
-import { stopScreenSharing } from "../app/features/webRtc/screenSlice";
 
 const ScreenShare = ({
     screenDialogOpen,
@@ -26,51 +24,54 @@ const ScreenShare = ({
     screenDialogOpen: boolean;
     setScreenDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
-    const peerStreams = useAppSelector((state) => state.screen.peerStreams);
-    const myStream = useAppSelector((state) => state.screen.myScreenStream);
+    const remoteParticipants = useAppSelector(
+        (state) => state.livekit.remoteParticipants
+    );
+    const myScreenTrack = useAppSelector(
+        (state) => state.livekit.myScreenTrack
+    );
+    const isScreenSharing = useAppSelector(
+        (state) => state.livekit.isScreenSharing
+    );
+
     const [isFullScreen, setIsFullScreen] = useState(false);
-    const [streamToDisplay, setStreamToDisplay] = useState<MediaStream>();
-    const [username, setUsername] = useState("");
-    const [key, setKey] = useState("");
+    const [fullScreenTrack, setFullScreenTrack] =
+        useState<MediaStreamTrack | null>(null);
+    const [fullScreenUsername, setFullScreenUsername] = useState("");
+
+    // Collect all remote screen share tracks
+    const remoteScreenTracks = Array.from(remoteParticipants.entries()).flatMap(
+        ([participantId, tracks]) =>
+            tracks
+                .filter((t) => t.source === Track.Source.ScreenShare)
+                .map((t) => ({ participantId, track: t }))
+    );
+
+    const hasContent = isScreenSharing || remoteScreenTracks.length > 0;
 
     const startScreenSharing = async () => {
-        const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
-        await gameInstance.startScreenSharing();
         setScreenDialogOpen(false);
+        await liveKitService.startScreenShare();
         toast(<div className="font-semibold">Started Screen Sharing</div>);
     };
 
-    const handleStopScreenSharing = () => {
-        store.dispatch(stopScreenSharing());
+    const handleStopScreenSharing = async () => {
+        await liveKitService.stopScreenShare();
         toast(<div className="font-semibold">Stopped Screen Sharing</div>);
     };
 
-    const handleFullScreenVideo = (
-        stream: MediaStream,
-        username: string,
-        key: string
-    ) => {
+    const handleFullScreen = (track: MediaStreamTrack, username: string) => {
+        setFullScreenTrack(track);
+        setFullScreenUsername(username);
         setIsFullScreen(true);
-        setStreamToDisplay(stream);
-        setUsername(username);
-        setKey(key);
     };
 
-    // checking if the current full screened video player left the room
-    // if he did then close that full screened video.
-    useEffect(() => {
-        if (isFullScreen) {
-            if (!peerStreams.has(key)) {
-                setIsFullScreen(false);
-            }
-        }
-    }, [peerStreams]);
-
-    if (isFullScreen) {
+    if (isFullScreen && fullScreenTrack) {
+        const stream = new MediaStream([fullScreenTrack]);
         return (
             <FullScreenPlayer
-                username={username}
-                stream={streamToDisplay}
+                username={fullScreenUsername}
+                stream={stream}
                 setIsFullScreen={setIsFullScreen}
             />
         );
@@ -84,16 +85,21 @@ const ScreenShare = ({
                         <DialogTitle className="text-center">
                             Shared Screens
                         </DialogTitle>
+                        <DialogDescription className="sr-only">
+                            View and manage shared screens in this office.
+                        </DialogDescription>
                     </DialogHeader>
                     <div
-                        className={`grid ${peerStreams.size > 0 || myStream
-                            ? "grid-cols-2 auto-rows-max"
-                            : "text-center place-items-center"
-                            } h-full overflow-auto gap-2 mt-2 py-2`}
+                        className={`grid ${
+                            hasContent
+                                ? "grid-cols-2 auto-rows-max"
+                                : "text-center place-items-center"
+                        } h-full overflow-auto gap-2 mt-2 py-2`}
                     >
-                        {peerStreams.size > 0 || myStream ? (
+                        {hasContent ? (
                             <>
-                                {myStream && (
+                                {/* My screen share preview */}
+                                {isScreenSharing && myScreenTrack && (
                                     <Card>
                                         <CardHeader>
                                             <CardTitle className="truncate">
@@ -101,38 +107,41 @@ const ScreenShare = ({
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="px-3">
-                                            <VideoPlayer stream={myStream} />
+                                            <TrackVideo
+                                                track={myScreenTrack}
+                                                muted
+                                            />
                                         </CardContent>
                                     </Card>
                                 )}
-                                {Array.from(peerStreams.entries()).map(
-                                    ([key, value]) => {
-                                        return (
-                                            <Card
-                                                className="cursor-pointer"
-                                                key={key}
-                                                onClick={() =>
-                                                    handleFullScreenVideo(
-                                                        value.stream,
-                                                        value.username,
-                                                        key
-                                                    )
-                                                }
-                                            >
-                                                <CardHeader>
-                                                    <CardTitle className="truncate">
-                                                        {value.username}'s
-                                                        Screen
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent className="px-3">
-                                                    <VideoPlayer
-                                                        stream={value.stream}
-                                                    />
-                                                </CardContent>
-                                            </Card>
-                                        );
-                                    }
+
+                                {/* Remote screen shares */}
+                                {remoteScreenTracks.map(
+                                    ({ participantId, track }) => (
+                                        <Card
+                                            key={track.trackSid}
+                                            className="cursor-pointer"
+                                            onClick={() =>
+                                                handleFullScreen(
+                                                    track.mediaStreamTrack,
+                                                    participantId
+                                                )
+                                            }
+                                        >
+                                            <CardHeader>
+                                                <CardTitle className="truncate">
+                                                    {participantId}'s Screen
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="px-3">
+                                                <TrackVideo
+                                                    track={
+                                                        track.mediaStreamTrack
+                                                    }
+                                                />
+                                            </CardContent>
+                                        </Card>
+                                    )
                                 )}
                             </>
                         ) : (
@@ -148,7 +157,7 @@ const ScreenShare = ({
                         )}
                     </div>
                     <DialogFooter className="sm:justify-center">
-                        {myStream ? (
+                        {isScreenSharing ? (
                             <Button
                                 className="cursor-pointer"
                                 onClick={handleStopScreenSharing}
@@ -170,6 +179,37 @@ const ScreenShare = ({
             </Dialog>
             <Toaster position="bottom-left" closeButton />
         </>
+    );
+};
+
+/**
+ * A small helper that renders a MediaStreamTrack inside a <video> element.
+ * Re-attaches when the track changes.
+ */
+const TrackVideo = ({
+    track,
+    muted = false,
+}: {
+    track: MediaStreamTrack;
+    muted?: boolean;
+}) => {
+    const ref = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        if (!ref.current || !track) return;
+        const stream = new MediaStream([track]);
+        ref.current.srcObject = stream;
+        ref.current.play().catch(() => {});
+    }, [track]);
+
+    return (
+        <video
+            ref={ref}
+            autoPlay
+            playsInline
+            muted={muted}
+            className="rounded-lg w-full"
+        />
     );
 };
 

@@ -10,7 +10,8 @@ import {
     PhoneOff,
     ScreenShare,
 } from "lucide-react";
-import { toggleMic, toggleWebcam } from "../app/features/webRtc/webcamSlice";
+import liveKitService from "../game/service/LiveKitService";
+
 import {
     Tooltip,
     TooltipContent,
@@ -36,9 +37,8 @@ const FloatingActions = ({
 }) => {
     const [shouldConnectToOtherPlayers, setShouldConnectToOtherPlayers] =
         useState(false);
-    const myWebcamStream = useAppSelector(
-        (state) => state.webcam.myWebcamStream
-    );
+    const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
+    const myWebcamStream = isCameraOn; // keep layout logic working
 
     return (
         <motion.div
@@ -153,8 +153,8 @@ export const WebcamButtons = ({
     shouldShowDisconnectButton?: boolean;
     setShouldConnectToOtherPlayers?: (x: boolean) => void;
 }) => {
-    const isWebcamOn = useAppSelector((state) => state.webcam.isWebcamOn);
-    const isMicOn = useAppSelector((state) => state.webcam.isMicOn);
+    const isWebcamOn = useAppSelector((state) => state.livekit.isCameraOn);
+    const isMicOn = useAppSelector((state) => state.livekit.isMicOn);
 
     return (
         <>
@@ -165,7 +165,7 @@ export const WebcamButtons = ({
                         variant="outline"
                         className="cursor-pointer transition-all ease-in-out"
                         onClick={() => {
-                            store.dispatch(toggleWebcam());
+                            liveKitService.toggleCamera();
                         }}
                     >
                         <AnimatePresence mode="wait" initial={false}>
@@ -207,7 +207,7 @@ export const WebcamButtons = ({
                         variant="outline"
                         className="cursor-pointer transition-all ease-in-out"
                         onClick={() => {
-                            store.dispatch(toggleMic());
+                            liveKitService.toggleMic();
                         }}
                     >
                         <AnimatePresence mode="wait" initial={false}>

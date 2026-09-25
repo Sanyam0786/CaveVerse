@@ -2,26 +2,15 @@ import store from "../../app/store";
 import Network from "./Network";
 import { OfficeManager } from "./OfficeManager";
 import { Player } from "./Player";
-import {
-    disconnectFromVideoCall,
-    disconnectUserForVideoCalling,
-    removeAllPeerConnectionsForVideoCalling,
-} from "../../app/features/webRtc/webcamSlice";
-import videoCalling from "../service/VideoCalling";
-import screenSharing from "../service/ScreenSharing";
+import liveKitService from "../service/LiveKitService";
 import {
     clearOfficeChat,
     setShowOfficeChat,
     setCurrentOfficeName,
 } from "../../app/features/chat/chatSlice";
-import {
-    clearPlayerNameMap,
-    removeAllPeerConnectionsForScreenSharing,
-    setPlayerNameMap,
-} from "../../app/features/webRtc/screenSlice";
+import { resetLiveKitState } from "../../app/features/webRtc/liveKitSlice";
 import {
     officeNames,
-    sanitizeUserIdForScreenSharing,
     OFFICE_PRETTY_NAMES,
 } from "../../lib/utils";
 
@@ -29,6 +18,7 @@ export class MyPlayer extends Player {
     private static SPEED = 300;
     private static SPRINT_SPEED = 600;
     private static DOUBLE_TAP_DELAY = 320; // max time in ms between taps to trigger sprint
+    private static PROXIMITY_CONNECT_DELAY = 1500; // ms near player before connecting
 
     private lastX: number;
     private lastY: number;
@@ -166,7 +156,6 @@ export class MyPlayer extends Player {
         // if player is moving then send his live position to the server.
         if (vx !== 0 || vy !== 0) {
             const currentAnimKey = this.getCurrentAnimationKey();
-
             this.network.updatePlayer(this.x, this.y, currentAnimKey);
         }
     }
@@ -185,27 +174,14 @@ export class MyPlayer extends Player {
         store.dispatch(setCurrentOfficeName(prettyName));
         store.dispatch(setShowOfficeChat(true));
 
-        // if player has previously given webcam access then upon joining the office,
-        // call other present players of the office and share current player's webcam with them.
-        if (store.getState().webcam.myWebcamStream) {
-            this.startWebcam();
-        }
-
         // notify other players & connect to the office
         this.network.joinOffice(this.currentOffice);
 
-        // TODO: Instead of adding & removing data in playerNameMap
-        // as player joins or leaves a room,
-        // maintain this map from the moment player joins the game
-        const { members } = this.network.getOfficeData(this.currentOffice);
-        members.forEach((username, sessionId) => {
-            store.dispatch(
-                setPlayerNameMap({
-                    peerId: sanitizeUserIdForScreenSharing(sessionId),
-                    username: username,
-                })
-            );
-        });
+        // If webcam is on, re-publish so new office members can see us
+        // LiveKit handles subscriptions automatically — no manual calls needed
+        if (store.getState().livekit.isCameraOn) {
+            liveKitService.startWebcam().catch(console.error);
+        }
     }
 
     private leaveOffice() {
@@ -214,9 +190,9 @@ export class MyPlayer extends Player {
         store.dispatch(setCurrentOfficeName(null));
         store.dispatch(clearOfficeChat());
         store.dispatch(setShowOfficeChat(false));
-        store.dispatch(removeAllPeerConnectionsForVideoCalling());
-        store.dispatch(removeAllPeerConnectionsForScreenSharing());
-        store.dispatch(clearPlayerNameMap());
+
+        // LiveKit unsubscribes from tracks automatically when participants leave
+        // No manual peer disconnection needed
 
         this.currentOffice = null;
     }
@@ -238,84 +214,27 @@ export class MyPlayer extends Player {
         }
     }
 
-    private shareWebcamWithProximityPlayers(
-        shouldConnectToOtherPlayers: boolean
-    ) {
-        for (const sessionId of this.proximityPlayers.keys()) {
-            videoCalling.shareWebcam(sessionId);
-        }
-
-        // when player uses "Disconnect from video call button" and then turns on his camera again,
-        // then we need to let other players know that the current player has started his webcam again.
-        // TODO: Investigate this logic....
-        if (shouldConnectToOtherPlayers) {
-            this.network.connectToProximityVideoCall(
-                Array.from(this.proximityPlayers.keys())
-            );
-        }
-    }
-
-    private shareWebcamWithOfficePlayers(shouldConnectToOtherPlayers: boolean) {
-        const { members } = this.network.getOfficeData(this.currentOffice);
-
-        members.forEach((username, sessionId) => {
-            // preventing calling ourself
-            if (sessionId === this.mySessionId) return;
-
-            // when current player starts sharing his webcam
-            // call other present players of the office and share webcam stream with them.
-            videoCalling.shareWebcam(sessionId);
-        });
-
-        // when player uses "Disconnect from video call button" and then turns on his camera again,
-        // then we need to let other players know that the current player has started his webcam again.
-        // TODO: Investigate this logic....
-        if (shouldConnectToOtherPlayers) {
-            this.network.connectToOfficeVideoCall(this.currentOffice);
-        }
-    }
-
     /**
-     * Starts current player's webcam.
-     *
-     * Gets the current player's webcam media and calls all the members of the current office.
+     * Starts current player's webcam via LiveKit.
+     * LiveKit SFU automatically distributes to all subscribed participants.
      */
     async startWebcam(shouldConnectToOtherPlayers = false) {
-        await videoCalling.getUserMedia();
-
+        await liveKitService.startWebcam();
         this.updateDisconnectStatus(false);
-        if (this.currentOffice) {
-            this.shareWebcamWithOfficePlayers(shouldConnectToOtherPlayers);
-        } else {
-            this.shareWebcamWithProximityPlayers(shouldConnectToOtherPlayers);
-        }
     }
 
     /**
-     * Starts streaming current player's screen.
-     *
-     * Gets the current player's display media and calls all the members of the current office.
+     * Starts streaming current player's screen via LiveKit.
+     * LiveKit SFU automatically distributes to all subscribed participants.
      */
     async startScreenSharing() {
-        await screenSharing.getUserMedia();
-
-        const { members } = this.network.getOfficeData(this.currentOffice);
-        members.forEach((username, sessionId) => {
-            // preventing calling ourself
-            if (sessionId === this.mySessionId) return;
-
-            // when current player starts sharing his screen
-            // call other present players of the office and share screen stream with them.
-            screenSharing.shareScreen(sessionId);
-        });
+        await liveKitService.startScreenShare();
     }
 
     /**
      * Handles disconnect status of the player
      * If player clicks on "Disconnect from video calls" button,
-     * it removes mic/webcam icons and shows disconenct icon
-     * If player reconnects, it removes disconnect icon and shows mic/webcam icons
-     * It also notifies server about these updates.
+     * it removes mic/webcam icons and shows disconnect icon.
      *
      * @param disconnected if true, show disconnect button otherwise show mic/webcam button
      */
@@ -339,8 +258,8 @@ export class MyPlayer extends Player {
      * 2. If the proximity player enters an office, disconnect immediately.
      * 3. Only then, if the player is still near and both are outside any office, start or complete connection.
      *
-     * This order ensures cleanup and disconnects are handled first, avoiding unnecessary
-     * connection attempts and reducing redundant proximity checks.
+     * With LiveKit, proximity video is handled by the SFU automatically.
+     * We just track proximity state for future use (e.g. showing/hiding UI).
      *
      * @param time update()'s time (from Phaser's update loop)
      * @param sessionId session ID of the proximity player
@@ -363,35 +282,20 @@ export class MyPlayer extends Player {
         if (this.proximityTimers.has(sessionId) && distance > 50) {
             const timer = this.proximityTimers.get(sessionId);
 
-            // player's timer was started but before connecting
-            // he moved away so no need to keep his timer anymore.
             if (!timer.connected) {
                 this.proximityTimers.delete(sessionId);
                 return;
             }
 
-            // if moved away player was connected then disconnect with him
-            store.dispatch(disconnectUserForVideoCalling(sessionId));
-
             this.proximityPlayers.delete(sessionId);
             this.proximityTimers.delete(sessionId);
-
-            // notifying proximity player to disconnect with current player
-            this.network.removeFromProximityCall(sessionId);
-
             return;
         }
 
         // disconnect if player is already connected and entered an office
         if (this.proximityPlayers.has(sessionId) && isProximityPlayerInOffice) {
-            store.dispatch(disconnectUserForVideoCalling(sessionId));
-
             this.proximityPlayers.delete(sessionId);
             this.proximityTimers.delete(sessionId);
-
-            // notifying proximity player to disconnect with current player
-            this.network.removeFromProximityCall(sessionId);
-
             return;
         }
 
@@ -411,48 +315,34 @@ export class MyPlayer extends Player {
             }
 
             // player is near for enough time and is not already connected
-            // only then connect with him
             const timer = this.proximityTimers.get(sessionId);
             if (
                 !timer.connected &&
                 time - timer.enterTime >= MyPlayer.PROXIMITY_CONNECT_DELAY
             ) {
-                // this.proximityPlayers[sessionId] = otherPlayer;
                 this.proximityPlayers.set(sessionId, otherPlayer);
                 timer.connected = true;
-                videoCalling.shareWebcam(sessionId);
+                // LiveKit SFU automatically delivers webcam tracks to all participants
+                // No manual shareWebcam() call needed
             }
         }
     }
 
     handlePlayerLeft(sessionId: string) {
-        store.dispatch(disconnectUserForVideoCalling(sessionId));
         this.proximityPlayers.delete(sessionId);
         this.proximityTimers.delete(sessionId);
     }
 
     playerStoppedScreenSharing() {
-        this.network.playerStoppedScreenSharing(this.currentOffice);
+        liveKitService.stopScreenShare();
     }
 
     /**
-     * Stops webcam.
-     *
-     * Letting other players know that the current player
-     * stopped his webcam.
+     * Stops webcam via LiveKit.
      */
     playerStoppedWebcam() {
-        // TODO: Add a common folder between server & client where all types can be declared.
-        // because currentOffice can be set to invalid string which server cannot handle.
-        store.dispatch(disconnectFromVideoCall());
+        liveKitService.stopWebcam();
         this.updateDisconnectStatus(true);
-        if (this.currentOffice) {
-            this.network.userStoppedOfficeWebcam(this.currentOffice);
-        } else {
-            this.network.userStoppedProximityWebcam(
-                Array.from(this.proximityPlayers.keys())
-            );
-        }
     }
 
     addNewOfficeChatMessage = (message: string) => {
@@ -460,21 +350,12 @@ export class MyPlayer extends Player {
     };
 
     /**
-     * Initializes Video Calling & Screen Sharing peers.
+     * Called once after the player is initialized in the scene.
+     * LiveKit connection is already established via Network.ts (LIVEKIT_TOKEN message).
+     * Nothing extra to initialize here.
      */
     initializePeers = () => {
-        videoCalling
-            .initializePeer(this.mySessionId)
-            .then((peer) => {
-                console.log("peer initialized for video calling: ", peer.id);
-            })
-            .catch((error) => {
-                console.error("Failed to initialize peer:", error);
-            });
-
-        screenSharing.initializePeer(this.mySessionId).then((peer) => {
-            console.log("peer initialized for screen sharing: ", peer.id);
-        });
+        console.log("[LiveKit] Media managed by LiveKit SFU — no peer initialization needed.");
     };
 
     update() {

@@ -1,9 +1,8 @@
 import { Client, Room } from "colyseus.js";
 import { BACKEND_URL } from "../backend";
-import { officeNames, sanitizeUserIdForScreenSharing } from "../../lib/utils";
+import { officeNames } from "../../lib/utils";
 import store from "../../app/store";
-import videoCalling from "../service/VideoCalling";
-import screenSharing from "../service/ScreenSharing";
+import liveKitService from "../service/LiveKitService";
 import {
     addAvailableRooms,
     removeFromAvailableRooms,
@@ -15,12 +14,7 @@ import {
     pushNewGlobalMessage,
     pushNewOfficeMessage,
 } from "../../app/features/chat/chatSlice";
-import {
-    disconnectUserForScreenSharing,
-    removePlayerNameMap,
-    setPlayerNameMap,
-} from "../../app/features/webRtc/screenSlice";
-import { disconnectUserForVideoCalling } from "../../app/features/webRtc/webcamSlice";
+import { resetLiveKitState } from "../../app/features/webRtc/liveKitSlice";
 import { Event, phaserEvents } from "../EventBus";
 
 export default class Network {
@@ -89,16 +83,12 @@ export default class Network {
      */
     joinOrCreatePublicRoom = async (username: string, character: string) => {
         store.dispatch(setIsLoading(true));
-        const isMicOn = store.getState().webcam.isMicOn;
-        const isWebcamOn = store.getState().webcam.isWebcamOn;
 
         this.username = username;
         this.character = character;
         this.room = await this.client.joinOrCreate("PUBLIC_ROOM", {
             username: this.username,
             character: this.character,
-            isMicOn,
-            isWebcamOn,
         });
         this.lobby.leave();
         store.dispatch(setIsLoading(false));
@@ -120,9 +110,6 @@ export default class Network {
     ) => {
         store.dispatch(setIsLoading(true));
 
-        const isMicOn = store.getState().webcam.isMicOn;
-        const isWebcamOn = store.getState().webcam.isWebcamOn;
-
         this.username = username;
         this.character = character;
         this.room = await this.client.create("PRIVATE_ROOM", {
@@ -130,8 +117,6 @@ export default class Network {
             password,
             username: this.username,
             character,
-            isMicOn,
-            isWebcamOn,
         });
         this.lobby.leave();
         store.dispatch(setIsLoading(false));
@@ -153,17 +138,12 @@ export default class Network {
     ) => {
         store.dispatch(setIsLoading(true));
 
-        const isMicOn = store.getState().webcam.isMicOn;
-        const isWebcamOn = store.getState().webcam.isWebcamOn;
-
         this.username = username;
         this.character = character;
         this.room = await this.client.joinById(roomId, {
             password,
             username: this.username,
             character,
-            isMicOn,
-            isWebcamOn,
         });
         this.lobby.leave();
         store.dispatch(setIsLoading(false));
@@ -233,41 +213,6 @@ export default class Network {
         });
     }
 
-    connectToOfficeVideoCall(currentOffice: string) {
-        this.room.send("CONNECT_TO_OFFICE_VIDEO_CALL", currentOffice);
-    }
-
-    connectToProximityVideoCall(proximityPlayerSessionId: string[]) {
-        this.room.send(
-            "CONNECT_TO_PROXIMITY_VIDEO_CALL",
-            proximityPlayerSessionId
-        );
-    }
-
-    removeFromProximityCall(sessionId: string) {
-        this.room.send("REMOVE_FROM_PROXIMITY_CALL", sessionId);
-    }
-
-    userStoppedOfficeWebcam(office: officeNames) {
-        this.room.send("USER_STOPPED_OFFICE_WEBCAM", office);
-    }
-
-    userStoppedProximityWebcam(proximityPlayers: string[]) {
-        this.room.send("USER_STOPPED_PROXIMITY_WEBCAM", proximityPlayers);
-    }
-
-    /**
-     * Stops screen sharing.
-     *
-     * Letting other players know that the current player
-     * stopped his screen sharing.
-     */
-    playerStoppedScreenSharing = (office: officeNames) => {
-        // TODO: Add a common folder between server & client where all types can be declared.
-        // because currentOffice can be set to invalid string which server cannot handle.
-        this.room.send("USER_STOPPED_SCREEN_SHARING", office);
-    };
-
     /**
      * Sends new Office Chat message.
      *
@@ -299,21 +244,25 @@ export default class Network {
      *
      * This method currently handles all types of messages from server,
      * which are this.room.onMessage, this.room.xxxx.onAdd & this.room.xxxx.onRemove
-     * if onAdd & onRemove types of messages increases in future, then split this method into 3:
-     * first to handle onMessage, second to handle onAdd, third to handle onRemove
      */
     handleServerMessages = () => {
-        // TODO: Fix "Cannot call peer - No local stream available"
+        // ── LiveKit token received on join ──────────────────────────────────────
+        this.room.onMessage(
+            "LIVEKIT_TOKEN",
+            async ({ token, url }: { token: string; url: string }) => {
+                console.log("[LiveKit] Received token, connecting to:", url);
+                try {
+                    await liveKitService.connect(url, token);
+                } catch (err) {
+                    console.error("[LiveKit] Failed to connect:", err);
+                }
+            }
+        );
+
+        // ── Office chat & presence ──────────────────────────────────────────────
         this.room.onMessage(
             "USER_JOINED_OFFICE",
-            async ({ playerSessionId, username, message, type }) => {
-                store.dispatch(
-                    setPlayerNameMap({
-                        peerId: sanitizeUserIdForScreenSharing(playerSessionId),
-                        username,
-                    })
-                );
-
+            ({ playerSessionId, username, message, type }) => {
                 store.dispatch(
                     pushNewOfficeMessage({
                         username,
@@ -321,11 +270,7 @@ export default class Network {
                         type,
                     })
                 );
-
-                // when new player joins office,
-                // then call that new player and share current player's screen & webcam with him
-                screenSharing.shareScreen(playerSessionId);
-                videoCalling.shareWebcam(playerSessionId);
+                // LiveKit handles media automatically — no manual peer calls needed
             }
         );
 
@@ -347,36 +292,25 @@ export default class Network {
             ({ playerSessionId, username, message, type }) => {
                 store.dispatch(
                     pushNewOfficeMessage({
-                        username: username,
-                        message: message,
-                        type: type,
+                        username,
+                        message,
+                        type,
                     })
                 );
-                store.dispatch(disconnectUserForVideoCalling(playerSessionId));
-                store.dispatch(disconnectUserForScreenSharing(playerSessionId));
-                store.dispatch(
-                    removePlayerNameMap(
-                        sanitizeUserIdForScreenSharing(playerSessionId)
-                    )
-                );
+                // No manual disconnect needed — LiveKit handles unsubscription automatically
             }
         );
 
         this.room.onMessage("GET_OFFICE_CHAT", (officeChat) => {
-            const allMessages = officeChat.map((msg) => {
-                return {
-                    username: msg.username,
-                    message: msg.message,
-                    type: msg.type,
-                };
-            });
+            const allMessages = officeChat.map((msg) => ({
+                username: msg.username,
+                message: msg.message,
+                type: msg.type,
+            }));
             store.dispatch(addOfficeChat(allMessages));
         });
 
-        this.room.onMessage("CONNECT_TO_VIDEO_CALL", (playerSessionId) => {
-            videoCalling.shareWebcam(playerSessionId);
-        });
-
+        // ── Global chat ────────────────────────────────────────────────────────
         this.room.onMessage(
             "NEW_GLOBAL_CHAT_MESSAGE",
             ({ username, message, type }) => {
@@ -391,25 +325,15 @@ export default class Network {
         );
 
         this.room.onMessage("GET_GLOBAL_CHAT", (globalChatMessages) => {
-            const allMessages = globalChatMessages.map((msg) => {
-                return {
-                    username: msg.username,
-                    message: msg.message,
-                    type: msg.type,
-                };
-            });
-
+            const allMessages = globalChatMessages.map((msg) => ({
+                username: msg.username,
+                message: msg.message,
+                type: msg.type,
+            }));
             store.dispatch(addGlobalChat(allMessages));
         });
 
-        this.room.onMessage("USER_STOPPED_SCREEN_SHARING", (userId) => {
-            store.dispatch(disconnectUserForScreenSharing(userId));
-        });
-
-        this.room.onMessage("END_VIDEO_CALL_WITH_USER", (userId) => {
-            store.dispatch(disconnectUserForVideoCalling(userId));
-        });
-
+        // ── Player presence ────────────────────────────────────────────────────
         this.room.state.players.onRemove((player, sessionId) => {
             phaserEvents.emit(Event.PLAYER_LEFT, sessionId);
         });

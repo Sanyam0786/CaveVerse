@@ -1,5 +1,7 @@
 import { Room, Client } from "colyseus";
 import { MyRoomState, Player, OfficeChat } from "../rooms/schema/MyRoomState";
+import { generateLiveKitToken, LIVEKIT_URL } from "../services/LiveKitService";
+
 
 type officeNames =
     | "mainOffice"
@@ -241,80 +243,8 @@ export class MyRoom extends Room<MyRoomState> {
             }
         );
 
-        this.onMessage(
-            "USER_STOPPED_SCREEN_SHARING",
-            (client, officeName: officeNames) => {
-                const { members } = this.getOfficeData(officeName);
-                members.forEach((username, userId) => {
-                    // preventing sending message to ourself
-                    if (userId === client.sessionId) return;
-
-                    this.clients
-                        .getById(userId)
-                        .send("USER_STOPPED_SCREEN_SHARING", client.sessionId);
-                });
-            }
-        );
-
-        this.onMessage(
-            "USER_STOPPED_OFFICE_WEBCAM",
-            (client, officeName: officeNames) => {
-                const { members } = this.getOfficeData(officeName);
-                members.forEach((username, userId) => {
-                    // preventing sending message to ourself
-                    if (userId === client.sessionId) return;
-
-                    this.clients
-                        .getById(userId)
-                        .send("END_VIDEO_CALL_WITH_USER", client.sessionId);
-                });
-            }
-        );
-
-        this.onMessage(
-            "USER_STOPPED_PROXIMITY_WEBCAM",
-            (client, proximityPlayers) => {
-                proximityPlayers.forEach((player: string) => {
-                    this.clients
-                        .getById(player)
-                        .send("END_VIDEO_CALL_WITH_USER", client.sessionId);
-                });
-            }
-        );
-
-        this.onMessage(
-            "CONNECT_TO_OFFICE_VIDEO_CALL",
-            (client, officeName: officeNames) => {
-                const { members } = this.getOfficeData(officeName);
-                members.forEach((username, userId) => {
-                    if (userId === client.sessionId) return;
-
-                    this.clients
-                        .getById(userId)
-                        .send("CONNECT_TO_VIDEO_CALL", client.sessionId);
-                });
-            }
-        );
-
-        this.onMessage(
-            "CONNECT_TO_PROXIMITY_VIDEO_CALL",
-            (client, proximityPlayers) => {
-                proximityPlayers.forEach((player: string) => {
-                    this.clients
-                        .getById(player)
-                        .send("CONNECT_TO_VIDEO_CALL", client.sessionId);
-                });
-            }
-        );
-
-        this.onMessage(
-            "REMOVE_FROM_PROXIMITY_CALL",
-            (client, proximityPlayerSessionId) => {
-                this.clients
-                    .getById(proximityPlayerSessionId)
-                    .send("END_VIDEO_CALL_WITH_USER", client.sessionId);
-            }
-        );
+        // LiveKit message handlers removed — clients subscribe to tracks automatically via LiveKit SFU.
+        // No more manual peer-call signaling (USER_STOPPED_SCREEN_SHARING, CONNECT_TO_VIDEO_CALL, etc.)
     }
 
     onJoin(client: Client, options: any) {
@@ -354,6 +284,17 @@ export class MyRoom extends Room<MyRoomState> {
 
         // sending whole chat to the newly joined user
         client.send("GET_GLOBAL_CHAT", this.state.globalChat);
+
+        // Generate and send a LiveKit token so the client can connect to the media server.
+        // We use this.roomId as the LiveKit room name so all players in the same
+        // Colyseus room are placed in the same LiveKit room automatically.
+        generateLiveKitToken(this.roomId, client.sessionId)
+            .then((token) => {
+                client.send("LIVEKIT_TOKEN", { token, url: LIVEKIT_URL });
+            })
+            .catch((err) => {
+                console.error("[LiveKit] Failed to generate token:", err);
+            });
     }
 
     onLeave(client: Client, consented: boolean) {

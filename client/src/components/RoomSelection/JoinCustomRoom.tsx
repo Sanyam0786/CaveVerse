@@ -82,7 +82,7 @@ const JoinCustomRoom = ({
                                 ref={(el) => {
                                     if (el && myCameraTrack) {
                                         el.srcObject = new MediaStream([myCameraTrack]);
-                                        el.play().catch(() => {});
+                                        el.play().catch(() => { });
                                     }
                                 }}
                                 autoPlay
@@ -140,7 +140,7 @@ const JoinCustomRoom = ({
                             )}
                         </Button>
                     </form>
-                    {!hasMediaStarted ? (
+                    {/* {!hasMediaStarted ? (
                         <Button
                             className="w-full cursor-pointer mt-2"
                             variant="outline"
@@ -154,7 +154,7 @@ const JoinCustomRoom = ({
                         <div className="flex gap-3 items-center justify-center mt-2">
                             <WebcamButtons shouldShowDisconnectButton={false} />
                         </div>
-                    )}
+                    )} */}
                 </div>
             </CardContent>
         </Card>

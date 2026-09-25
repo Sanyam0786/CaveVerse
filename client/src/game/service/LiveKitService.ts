@@ -394,7 +394,7 @@ class LiveKitService {
         const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
         gameInstance?.updateWebcamStatus(false);
         gameInstance?.updateMicStatus(false);
-        gameInstance?.updateDisconnectStatus(true);
+        // gameInstance?.updateDisconnectStatus(true);
 
         // 2. Perform stop screen sharing and media unpublishing in the background
         setTimeout(async () => {

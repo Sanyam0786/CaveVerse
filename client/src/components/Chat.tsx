@@ -46,6 +46,44 @@ const Chat = ({
 
     const chatContainerRef = useRef<HTMLDivElement>();
     const inputRef = useRef<HTMLInputElement>(null);
+    const submitButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent | PointerEvent) => {
+            if (
+                inputRef.current &&
+                document.activeElement === inputRef.current &&
+                !inputRef.current.contains(event.target as Node)
+            ) {
+                if (
+                    submitButtonRef.current &&
+                    submitButtonRef.current.contains(event.target as Node)
+                ) {
+                    return;
+                }
+                inputRef.current.blur();
+            }
+        };
+
+        window.addEventListener("pointerdown", handleClickOutside, true);
+        return () => {
+            window.removeEventListener("pointerdown", handleClickOutside, true);
+        };
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            try {
+                const gameInstance = phaserGame.scene?.keys
+                    ?.GameScene as GameScene;
+                if (gameInstance?.enableKeys) {
+                    gameInstance.enableKeys();
+                }
+            } catch (err) {
+                console.error("Failed to enable keys on unmount:", err);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (focused) {
@@ -170,19 +208,37 @@ const Chat = ({
                     <Input
                         className="pr-[35px]"
                         placeholder="type here...."
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                                inputRef.current?.blur();
+                            }
+                        }}
                         onFocus={() => {
-                            const gameInstance = phaserGame.scene.keys
-                                .GameScene as GameScene;
-                            gameInstance.disableKeys();
+                            try {
+                                const gameInstance = phaserGame.scene?.keys
+                                    ?.GameScene as GameScene;
+                                if (gameInstance?.disableKeys) {
+                                    gameInstance.disableKeys();
+                                }
+                            } catch (err) {
+                                console.error("Failed to disable keys on focus:", err);
+                            }
                         }}
                         onBlur={() => {
-                            const gameInstance = phaserGame.scene.keys
-                                .GameScene as GameScene;
-                            gameInstance.enableKeys();
+                            try {
+                                const gameInstance = phaserGame.scene?.keys
+                                    ?.GameScene as GameScene;
+                                if (gameInstance?.enableKeys) {
+                                    gameInstance.enableKeys();
+                                }
+                            } catch (err) {
+                                console.error("Failed to enable keys on blur:", err);
+                            }
                         }}
                         ref={inputRef}
                     />
                     <button
+                        ref={submitButtonRef}
                         className="absolute right-6 cursor-pointer"
                         type="submit"
                     >

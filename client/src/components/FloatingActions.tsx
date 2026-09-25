@@ -37,8 +37,7 @@ const FloatingActions = ({
 }) => {
     const [shouldConnectToOtherPlayers, setShouldConnectToOtherPlayers] =
         useState(false);
-    const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
-    const myWebcamStream = isCameraOn; // keep layout logic working
+    const hasMediaStarted = useAppSelector((state) => state.livekit.hasMediaStarted);
 
     return (
         <motion.div
@@ -54,7 +53,7 @@ const FloatingActions = ({
             className={`absolute bottom-7 ${
                 !showChat
                     ? "left-[40%]"
-                    : myWebcamStream
+                    : hasMediaStarted
                     ? "left-[calc((52%-384px)+48px)]"
                     : "left-[calc((55%-384px)+48px)]"
             } p-4 flex gap-4 bg-[#121214]/50 backdrop-blur-xs shadow-black/30 shadow-lg rounded-lg`}
@@ -96,8 +95,8 @@ const FloatingActions = ({
                     </Tooltip>
                 )}
 
-                {myWebcamStream ? (
-                    // Player has given access to his webcam
+                {hasMediaStarted ? (
+                    // Player has given access to his webcam / mic
                     <WebcamButtons
                         setShouldConnectToOtherPlayers={
                             setShouldConnectToOtherPlayers

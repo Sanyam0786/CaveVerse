@@ -16,6 +16,8 @@ import { useAppSelector } from "../app/hooks";
 import { Track } from "livekit-client";
 import liveKitService from "../game/service/LiveKitService";
 import FullScreenPlayer from "./FullScreenPlayer";
+import phaserGame from "../game/main";
+import { GameScene } from "../game/scenes/GameScene";
 
 const ScreenShare = ({
     screenDialogOpen,
@@ -39,12 +41,33 @@ const ScreenShare = ({
         useState<MediaStreamTrack | null>(null);
     const [fullScreenUsername, setFullScreenUsername] = useState("");
 
-    // Collect all remote screen share tracks
+    const resolveUsername = (
+        participantId: string,
+        trackName?: string
+    ): string => {
+        if (trackName && trackName !== participantId) {
+            return trackName;
+        }
+        try {
+            const gameScene = phaserGame?.scene?.keys?.GameScene as GameScene;
+            if (gameScene?.getPlayerUsername) {
+                const found = gameScene.getPlayerUsername(participantId);
+                if (found && found !== participantId) return found;
+            }
+        } catch { }
+        return participantId;
+    };
+
+    // Collect all remote screen share tracks with resolved usernames
     const remoteScreenTracks = Array.from(remoteParticipants.entries()).flatMap(
         ([participantId, tracks]) =>
             tracks
                 .filter((t) => t.source === Track.Source.ScreenShare)
-                .map((t) => ({ participantId, track: t }))
+                .map((t) => ({
+                    participantId,
+                    track: t,
+                    username: resolveUsername(participantId, t.participantName),
+                }))
     );
 
     const hasContent = isScreenSharing || remoteScreenTracks.length > 0;
@@ -73,6 +96,10 @@ const ScreenShare = ({
                 username={fullScreenUsername}
                 stream={stream}
                 setIsFullScreen={setIsFullScreen}
+                isLocalPresenter={
+                    isScreenSharing && fullScreenUsername === "Your Screen"
+                }
+                onStopSharing={handleStopScreenSharing}
             />
         );
     }
@@ -80,9 +107,9 @@ const ScreenShare = ({
     return (
         <>
             <Dialog open={screenDialogOpen} onOpenChange={setScreenDialogOpen}>
-                <DialogContent className="h-[50%] flex flex-col justify-between">
+                <DialogContent className="h-[55%] flex flex-col justify-between">
                     <DialogHeader className="mt-3">
-                        <DialogTitle className="text-center">
+                        <DialogTitle className="text-center font-semibold text-lg">
                             Shared Screens
                         </DialogTitle>
                         <DialogDescription className="sr-only">
@@ -90,23 +117,33 @@ const ScreenShare = ({
                         </DialogDescription>
                     </DialogHeader>
                     <div
-                        className={`grid ${
-                            hasContent
-                                ? "grid-cols-2 auto-rows-max"
-                                : "text-center place-items-center"
-                        } h-full overflow-auto gap-2 mt-2 py-2`}
+                        className={`grid ${hasContent
+                            ? "grid-cols-2 auto-rows-max"
+                            : "text-center place-items-center"
+                            } h-full overflow-auto gap-3 mt-2 py-2`}
                     >
                         {hasContent ? (
                             <>
                                 {/* My screen share preview */}
                                 {isScreenSharing && myScreenTrack && (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="truncate">
-                                                Your Screen
+                                    <Card
+                                        className="cursor-pointer hover:border-emerald-500/50 hover:shadow-md transition-all"
+                                        onClick={() =>
+                                            handleFullScreen(
+                                                myScreenTrack,
+                                                "Your Screen"
+                                            )
+                                        }
+                                    >
+                                        <CardHeader className="py-2.5 px-3">
+                                            <CardTitle className="truncate text-sm flex items-center justify-between">
+                                                <span>Your Screen</span>
+                                                <span className="text-xs text-emerald-500 font-medium">
+                                                    Presenting
+                                                </span>
                                             </CardTitle>
                                         </CardHeader>
-                                        <CardContent className="px-3">
+                                        <CardContent className="px-3 pb-3">
                                             <TrackVideo
                                                 track={myScreenTrack}
                                                 muted
@@ -117,23 +154,23 @@ const ScreenShare = ({
 
                                 {/* Remote screen shares */}
                                 {remoteScreenTracks.map(
-                                    ({ participantId, track }) => (
+                                    ({ track, username }) => (
                                         <Card
                                             key={track.trackSid}
-                                            className="cursor-pointer"
+                                            className="cursor-pointer hover:border-emerald-500/50 hover:shadow-md transition-all"
                                             onClick={() =>
                                                 handleFullScreen(
                                                     track.mediaStreamTrack,
-                                                    participantId
+                                                    username
                                                 )
                                             }
                                         >
-                                            <CardHeader>
-                                                <CardTitle className="truncate">
-                                                    {participantId}'s Screen
+                                            <CardHeader className="py-2.5 px-3">
+                                                <CardTitle className="truncate text-sm flex items-center justify-between">
+                                                    <span>{username}'s Screen</span>
                                                 </CardTitle>
                                             </CardHeader>
-                                            <CardContent className="px-3">
+                                            <CardContent className="px-3 pb-3">
                                                 <TrackVideo
                                                     track={
                                                         track.mediaStreamTrack
@@ -199,7 +236,7 @@ const TrackVideo = ({
         if (!ref.current || !track) return;
         const stream = new MediaStream([track]);
         ref.current.srcObject = stream;
-        ref.current.play().catch(() => {});
+        ref.current.play().catch(() => { });
     }, [track]);
 
     return (
@@ -208,7 +245,8 @@ const TrackVideo = ({
             autoPlay
             playsInline
             muted={muted}
-            className="rounded-lg w-full"
+            disablePictureInPicture
+            className="rounded-lg w-full pointer-events-none select-none object-contain"
         />
     );
 };

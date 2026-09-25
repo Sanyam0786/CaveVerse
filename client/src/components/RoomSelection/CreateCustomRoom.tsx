@@ -13,7 +13,6 @@ import {
 import phaserGame from "../../game/main";
 import { ArrowLeft, LoaderIcon, OctagonAlert } from "lucide-react";
 import { useAppSelector } from "../../app/hooks";
-import { VideoPlayer } from "../VideoPlayer";
 import liveKitService from "../../game/service/LiveKitService";
 import { WebcamButtons } from "../FloatingActions";
 
@@ -40,7 +39,8 @@ const CreateCustomRoom = ({
     const [alert, setAlert] = useState<string | null>(null);
     const isLoading = useAppSelector((state) => state.room.isLoading);
     const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
-    const myWebcamStream = isCameraOn;
+    const hasMediaStarted = useAppSelector((state) => state.livekit.hasMediaStarted);
+    const myCameraTrack = useAppSelector((state) => state.livekit.myCameraTrack);
 
     const handleRoomCreation = (e) => {
         e.preventDefault();
@@ -67,6 +67,9 @@ const CreateCustomRoom = ({
                     <ArrowLeft
                         className="cursor-pointer text-zinc-500 absolute left-0"
                         onClick={() => {
+                            if (isCameraOn) {
+                                liveKitService.stopWebcam();
+                            }
                             setShowCreateOrJoinCustomRoom(true);
                             setShowCreateRoom(false);
                         }}
@@ -78,13 +81,20 @@ const CreateCustomRoom = ({
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-4 items-center">
-                {myWebcamStream && (
-                    <Card className="flex items-center justify-center">
-                        <CardContent>
-                            <VideoPlayer
-                                stream={myWebcamStream}
-                                className="w-48"
+                {myCameraTrack && (
+                    <Card className="flex items-center justify-center overflow-hidden">
+                        <CardContent className="p-2">
+                            <video
+                                ref={(el) => {
+                                    if (el && myCameraTrack) {
+                                        el.srcObject = new MediaStream([myCameraTrack]);
+                                        el.play().catch(() => {});
+                                    }
+                                }}
+                                autoPlay
+                                playsInline
                                 muted
+                                className="w-48 rounded-md"
                             />
                         </CardContent>
                     </Card>
@@ -144,7 +154,7 @@ const CreateCustomRoom = ({
                             )}
                         </Button>
                     </form>
-                    {!isCameraOn ? (
+                    {!hasMediaStarted ? (
                         <Button
                             className="w-full cursor-pointer mt-2"
                             variant="outline"

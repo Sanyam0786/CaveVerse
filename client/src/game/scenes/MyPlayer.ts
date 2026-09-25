@@ -22,8 +22,12 @@ export class MyPlayer extends Player {
 
     private lastX: number;
     private lastY: number;
-    private mySessionId: string;
+    public mySessionId: string;
     private character: string;
+
+    public get sessionId(): string {
+        return this.mySessionId;
+    }
 
     private currentOffice: officeNames;
     private network: Network;

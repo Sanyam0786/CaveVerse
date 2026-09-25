@@ -288,7 +288,7 @@ export class MyRoom extends Room<MyRoomState> {
         // Generate and send a LiveKit token so the client can connect to the media server.
         // We use this.roomId as the LiveKit room name so all players in the same
         // Colyseus room are placed in the same LiveKit room automatically.
-        generateLiveKitToken(this.roomId, client.sessionId)
+        generateLiveKitToken(this.roomId, client.sessionId, username)
             .then((token) => {
                 client.send("LIVEKIT_TOKEN", { token, url: LIVEKIT_URL });
             })

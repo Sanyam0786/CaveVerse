@@ -13,9 +13,20 @@ export class GameScene extends Phaser.Scene {
     private map!: Phaser.Tilemaps.Tilemap;
     private network: Network;
     private cursorKeys: Phaser.Types.Input.Keyboard.CursorKeys;
-    private myPlayer: MyPlayer;
-    private otherPlayers = new Map<string, Player>();
+    public myPlayer: MyPlayer;
+    public otherPlayers = new Map<string, Player>();
     private lastMinimapEmit = 0;
+
+    public getPlayerUsername(sessionId: string): string {
+        if (this.myPlayer && this.myPlayer.sessionId === sessionId) {
+            return this.myPlayer.username || "You";
+        }
+        const other = this.otherPlayers.get(sessionId);
+        if (other && other.username) {
+            return other.username;
+        }
+        return sessionId;
+    }
 
     constructor() {
         super({ key: "GameScene" });
@@ -101,8 +112,8 @@ export class GameScene extends Phaser.Scene {
     ) {
         console.log("current player's sessionId: ", sessionId);
 
-        const isMicOn = store.getState().webcam.isMicOn;
-        const isWebcamOn = store.getState().webcam.isWebcamOn;
+        const isMicOn = store.getState().livekit.isMicOn;
+        const isWebcamOn = store.getState().livekit.isCameraOn;
 
         this.myPlayer = new MyPlayer(
             this,

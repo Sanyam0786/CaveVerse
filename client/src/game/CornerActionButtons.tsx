@@ -26,7 +26,7 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
                     position: "fixed",
                     bottom: "1.75rem",
                     left: "1.75rem",
-                    zIndex: 50,
+                    zIndex: 20,
                 }}
             >
                 <MiniMap />

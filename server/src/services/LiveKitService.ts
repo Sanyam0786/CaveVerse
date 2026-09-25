@@ -14,10 +14,12 @@ export const LIVEKIT_URL = process.env.LIVEKIT_URL || "ws://localhost:7880";
  */
 export async function generateLiveKitToken(
     roomName: string,
-    identity: string
+    identity: string,
+    name?: string
 ): Promise<string> {
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
         identity,
+        name: name || identity,
         ttl: "4h",
     });
 

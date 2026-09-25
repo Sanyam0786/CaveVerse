@@ -250,9 +250,20 @@ export default class Network {
         this.room.onMessage(
             "LIVEKIT_TOKEN",
             async ({ token, url }: { token: string; url: string }) => {
-                console.log("[LiveKit] Received token, connecting to:", url);
+                let liveKitUrl = url;
+                if (typeof window !== "undefined" && window.location) {
+                    if (
+                        window.location.hostname !== "localhost" &&
+                        window.location.hostname !== "127.0.0.1"
+                    ) {
+                        const proto =
+                            window.location.protocol === "https:" ? "wss:" : "ws:";
+                        liveKitUrl = `${proto}//${window.location.host}/livekit`;
+                    }
+                }
+                console.log("[LiveKit] Received token, connecting to:", liveKitUrl);
                 try {
-                    await liveKitService.connect(url, token);
+                    await liveKitService.connect(liveKitUrl, token);
                 } catch (err) {
                     console.error("[LiveKit] Failed to connect:", err);
                 }

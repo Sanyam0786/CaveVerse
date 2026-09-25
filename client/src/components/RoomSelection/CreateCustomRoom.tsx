@@ -14,10 +14,9 @@ import phaserGame from "../../game/main";
 import { ArrowLeft, LoaderIcon, OctagonAlert } from "lucide-react";
 import { useAppSelector } from "../../app/hooks";
 import { VideoPlayer } from "../VideoPlayer";
+import liveKitService from "../../game/service/LiveKitService";
 import { WebcamButtons } from "../FloatingActions";
-import videoCalling from "../../game/service/VideoCalling";
-import store from "../../app/store";
-import { disconnectFromVideoCall } from "../../app/features/webRtc/webcamSlice";
+
 import CharacterCarousel from "./CharacterCarousel";
 import { PasswordInput } from "./PasswordInput";
 
@@ -40,9 +39,8 @@ const CreateCustomRoom = ({
     const [password, setPassword] = useState("");
     const [alert, setAlert] = useState<string | null>(null);
     const isLoading = useAppSelector((state) => state.room.isLoading);
-    const myWebcamStream = useAppSelector(
-        (state) => state.webcam.myWebcamStream
-    );
+    const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
+    const myWebcamStream = isCameraOn;
 
     const handleRoomCreation = (e) => {
         e.preventDefault();
@@ -71,10 +69,6 @@ const CreateCustomRoom = ({
                         onClick={() => {
                             setShowCreateOrJoinCustomRoom(true);
                             setShowCreateRoom(false);
-                            {
-                                myWebcamStream &&
-                                    store.dispatch(disconnectFromVideoCall());
-                            }
                         }}
                     />
                     Create Custom Room
@@ -150,12 +144,12 @@ const CreateCustomRoom = ({
                             )}
                         </Button>
                     </form>
-                    {!myWebcamStream ? (
+                    {!isCameraOn ? (
                         <Button
                             className="w-full cursor-pointer mt-2"
                             variant="outline"
                             onClick={async () => {
-                                await videoCalling.getUserMedia();
+                                await liveKitService.startWebcam();
                             }}
                         >
                             Start Webcam

@@ -13,10 +13,9 @@ import {
 import phaserGame from "../../game/main";
 import { ArrowLeft, LoaderIcon } from "lucide-react";
 import { VideoPlayer } from "../VideoPlayer";
-import videoCalling from "../../game/service/VideoCalling";
-import store from "../../app/store";
-import { disconnectFromVideoCall } from "../../app/features/webRtc/webcamSlice";
+import liveKitService from "../../game/service/LiveKitService";
 import { WebcamButtons } from "../FloatingActions";
+
 import CharacterCarousel from "./CharacterCarousel";
 import { useAppSelector } from "../../app/hooks";
 
@@ -36,9 +35,8 @@ const PublicRoom = ({
     const bootstrap = phaserGame.scene.keys.bootstrap as Bootstrap;
     const [username, setUsername] = useState("");
     const isLoading = useAppSelector((state) => state.room.isLoading);
-    const myWebcamStream = useAppSelector(
-        (state) => state.webcam.myWebcamStream
-    );
+    const isCameraOn = useAppSelector((state) => state.livekit.isCameraOn);
+    const myWebcamStream = isCameraOn;
 
     const handlePublicRoomJoin = (e) => {
         e.preventDefault();
@@ -60,10 +58,6 @@ const PublicRoom = ({
                         onClick={() => {
                             setShowCreateOrJoinCustomRoom(false);
                             setShowPublicRoom(false);
-                            {
-                                myWebcamStream &&
-                                    store.dispatch(disconnectFromVideoCall());
-                            }
                         }}
                     />
                     Join Public Room
@@ -116,12 +110,12 @@ const PublicRoom = ({
                             )}
                         </Button>
                     </form>
-                    {!myWebcamStream ? (
+                    {!isCameraOn ? (
                         <Button
                             className="w-full cursor-pointer mt-2"
                             variant="outline"
                             onClick={async () => {
-                                await videoCalling.getUserMedia();
+                                await liveKitService.startWebcam();
                             }}
                         >
                             Start Webcam

@@ -58,8 +58,8 @@ class LiveKitService {
         }
 
         this.room = new Room({
-            adaptiveStream: true,
-            dynacast: true,
+            adaptiveStream: false,
+            dynacast: false,
             reconnectPolicy: {
                 nextRetryDelayInMs: (retryContext) =>
                     retryContext.retryCount > 5
@@ -75,7 +75,15 @@ class LiveKitService {
                 console.log(
                     `[LiveKit] Remote track published: ${participant.identity} -> ${pub.source} (${pub.kind})`
                 );
-                if (this.isParticipantInSameOffice(participant.identity)) {
+                let participantOffice: string | null = null;
+                try {
+                    if (participant.metadata) {
+                        participantOffice =
+                            JSON.parse(participant.metadata).office || null;
+                    }
+                } catch { }
+
+                if (this.isParticipantInSameOffice(participant.identity, participantOffice)) {
                     if (pub.setSubscribed) pub.setSubscribed(true);
                 }
             }
@@ -162,6 +170,81 @@ class LiveKitService {
                         trackSid: track.sid,
                     })
                 );
+            }
+        );
+
+        this.room.on(
+            RoomEvent.TrackUnpublished,
+            (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+                console.log(
+                    `[LiveKit] Remote track unpublished: ${participant.identity} -> ${pub.source} (${pub.kind})`
+                );
+                store.dispatch(
+                    removeRemoteTrack({
+                        participantId: participant.identity,
+                        trackSid: pub.trackSid,
+                    })
+                );
+            }
+        );
+
+        this.room.on(
+            RoomEvent.TrackMuted,
+            (pub: TrackPublication, participant: Participant) => {
+                if (participant === this.room?.localParticipant) return;
+
+                if (pub.kind === "audio") {
+                    const el = document.getElementById(
+                        `lk-audio-${participant.identity}-${pub.trackSid}`
+                    ) as HTMLAudioElement;
+                    if (el) el.muted = true;
+                }
+
+                // If remote camera track is muted, immediately remove from UI so last frame does not freeze
+                if (pub.kind === "video" && (pub.source === Track.Source.Camera || pub.source === "camera")) {
+                    console.log(`[LiveKit] Remote camera muted: removing tile for ${participant.identity}`);
+                    store.dispatch(
+                        removeRemoteTrack({
+                            participantId: participant.identity,
+                            trackSid: pub.trackSid,
+                        })
+                    );
+                }
+            }
+        );
+
+        this.room.on(
+            RoomEvent.TrackUnmuted,
+            (pub: TrackPublication, participant: Participant) => {
+                if (participant === this.room?.localParticipant) return;
+
+                if (pub.kind === "audio") {
+                    const el = document.getElementById(
+                        `lk-audio-${participant.identity}-${pub.trackSid}`
+                    ) as HTMLAudioElement;
+                    if (el) el.muted = false;
+                }
+
+                // If remote camera unmuted, re-add to UI if in same office
+                if (pub.kind === "video" && (pub.source === Track.Source.Camera || pub.source === "camera")) {
+                    if (this.isParticipantInSameOffice(participant.identity)) {
+                        const track = pub.track;
+                        if (track) {
+                            console.log(`[LiveKit] Remote camera unmuted: restoring tile for ${participant.identity}`);
+                            store.dispatch(
+                                addRemoteTrack({
+                                    participantId: participant.identity,
+                                    participantName:
+                                        participant.name || participant.identity,
+                                    trackSid: track.sid,
+                                    kind: track.kind as "audio" | "video",
+                                    source: pub.source,
+                                    mediaStreamTrack: track.mediaStreamTrack,
+                                })
+                            );
+                        }
+                    }
+                }
             }
         );
 
@@ -279,6 +362,35 @@ class LiveKitService {
     }
 
     /**
+     * Attaches a remote video track directly to a HTMLVideoElement using LiveKit's native attach().
+     * Returns a cleanup function to detach the element, or null if not yet available.
+     */
+    public attachRemoteVideo(
+        participantId: string,
+        trackSid: string,
+        videoElement: HTMLVideoElement
+    ): (() => void) | null {
+        if (!this.room) return null;
+        const participant = this.room.getParticipantByIdentity(participantId);
+        if (!participant) return null;
+        const pub = participant.getTrackPublication(trackSid);
+        const track = pub?.track;
+        if (track && track.attach) {
+            try {
+                track.attach(videoElement);
+                return () => {
+                    try {
+                        track.detach(videoElement);
+                    } catch { }
+                };
+            } catch (err) {
+                console.warn("[LiveKit] Native track attach warning:", err);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Synchronizes tracks of a single remote participant based on current office.
      */
     private syncParticipantTracks(participant: RemoteParticipant): void {
@@ -391,22 +503,13 @@ class LiveKitService {
         // 1. Immediately update UI so character walks out smoothly with zero lag or freeze
         store.dispatch(clearOfficeMedia());
 
-        const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
-        gameInstance?.updateWebcamStatus(false);
-        gameInstance?.updateMicStatus(false);
-        // gameInstance?.updateDisconnectStatus(true);
-
-        // 2. Perform stop screen sharing and media unpublishing in the background
+        // 2. Perform stop screen sharing and office metadata reset in the background
         setTimeout(async () => {
             if (this.room) {
-                // Stop local screen sharing cleanly in background
+                // Stop local screen sharing cleanly in background (office-scoped only)
                 await this.stopScreenShare().catch(() => { });
 
-                // Turn off camera & mic publications (without destroying WebRTC peer connection)
-                await this.room.localParticipant.setCameraEnabled(false).catch(() => { });
-                await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => { });
-
-                // Update metadata to null so peers know we left
+                // Update metadata to null so office peers immediately stop receiving our camera/mic
                 await this.room.localParticipant.setMetadata(
                     JSON.stringify({ office: null })
                 ).catch(console.warn);
@@ -566,9 +669,31 @@ class LiveKitService {
             return;
         }
 
+        // Check if browser supports camera
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+            alert("Camera API is not supported in this browser. Please ensure you are using Safari (iOS) or Chrome (Android) over HTTPS.");
+            return;
+        }
+
         // Inside LiveKit room
+        if (this.room.state !== "connected") {
+            console.warn("[LiveKit] Room is not in connected state:", this.room.state);
+            alert(`Voice/Video service is currently ${this.room.state}. Please wait a few seconds and try again.`);
+            return;
+        }
+
         try {
-            const pub = await this.room.localParticipant.setCameraEnabled(true);
+            // Attempt with front-facing camera on mobile devices
+            let pub;
+            try {
+                pub = await this.room.localParticipant.setCameraEnabled(true, {
+                    facingMode: "user",
+                });
+            } catch (camErr) {
+                console.warn("[LiveKit] Failed with facingMode: user, falling back to default:", camErr);
+                pub = await this.room.localParticipant.setCameraEnabled(true);
+            }
+
             const track =
                 pub?.track?.mediaStreamTrack ||
                 this.room.localParticipant.getTrackPublication(Track.Source.Camera)
@@ -580,20 +705,31 @@ class LiveKitService {
             store.dispatch(setIsCameraOn(true));
             store.dispatch(setHasMediaStarted(true));
 
-            const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
-            gameInstance?.updateWebcamStatus(true);
-            gameInstance?.updateDisconnectStatus(false);
+            try {
+                const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
+                gameInstance?.updateWebcamStatus(true);
+                gameInstance?.updateDisconnectStatus(false);
+            } catch (uiErr) {
+                console.warn("[LiveKit] UI update error:", uiErr);
+            }
+
             console.log("[LiveKit] Camera enabled in room");
-        } catch (err) {
+        } catch (err: any) {
             console.error("[LiveKit] Failed to enable camera:", err);
-            alert("Could not access camera. Please allow camera permissions in your browser.");
+            const errName = err?.name || "Error";
+            const errMsg = err?.message || String(err);
+            if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+                alert("Camera permission denied. Please tap the lock / settings icon in your browser address bar and allow Camera access.");
+            } else {
+                alert(`Could not access camera (${errName}: ${errMsg}).\nPlease check your browser's camera permissions.`);
+            }
             return;
         }
 
         try {
             await this.room.localParticipant.setMicrophoneEnabled(true);
             store.dispatch(setIsMicOn(true));
-            const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
+            const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
             gameInstance?.updateMicStatus(true);
         } catch (err) {
             console.warn("[LiveKit] Failed to enable microphone:", err);
@@ -622,47 +758,123 @@ class LiveKitService {
         const nextState = !currentlyOn;
 
         try {
-            await this.room.localParticipant.setCameraEnabled(nextState);
+            let pub;
             if (nextState) {
-                const pub = this.room.localParticipant.getTrackPublication(
-                    Track.Source.Camera
-                );
-                if (pub?.track?.mediaStreamTrack) {
-                    store.dispatch(setMyCameraTrack(pub.track.mediaStreamTrack));
+                try {
+                    pub = await this.room.localParticipant.setCameraEnabled(true, {
+                        facingMode: "user",
+                    });
+                } catch {
+                    pub = await this.room.localParticipant.setCameraEnabled(true);
+                }
+                const track =
+                    pub?.track?.mediaStreamTrack ||
+                    this.room.localParticipant.getTrackPublication(
+                        Track.Source.Camera
+                    )?.track?.mediaStreamTrack;
+                if (track) {
+                    store.dispatch(setMyCameraTrack(track));
                 }
                 store.dispatch(setIsCameraOn(true));
             } else {
+                await this.room.localParticipant.setCameraEnabled(false).catch(() => {});
                 store.dispatch(clearMyCameraTrack());
+
+                // Completely stop and unpublish camera tracks so peers immediately remove the video tile
+                const camPubs = this.room.localParticipant
+                    .getTrackPublications()
+                    .filter((p) => p.kind === Track.Kind.Video && (p.source === Track.Source.Camera || p.source === "camera"));
+
+                for (const pub of camPubs) {
+                    if (pub.track) {
+                        try {
+                            pub.track.mediaStreamTrack.enabled = false;
+                            pub.track.mediaStreamTrack.stop();
+                        } catch { }
+                        await this.room.localParticipant.unpublishTrack(pub.track as LocalTrack).catch(() => {});
+                    }
+                }
             }
 
-            const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
+            const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
             gameInstance?.updateWebcamStatus(nextState);
-        } catch (err) {
+        } catch (err: any) {
             console.error("[LiveKit] Failed to toggle camera:", err);
+            const errName = err?.name || "Error";
+            const errMsg = err?.message || String(err);
+            if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+                alert("Camera permission denied. Please allow Camera access in your browser settings.");
+            } else {
+                alert(`Could not toggle camera (${errName}: ${errMsg})`);
+            }
         }
     }
 
     public async toggleMic(): Promise<void> {
+        const currentlyOn = store.getState().livekit.isMicOn;
+        const nextState = !currentlyOn;
+        console.log(`[LiveKit] Toggling mic: currentlyOn=${currentlyOn} -> nextState=${nextState}`);
+
+        // 1. Immediately update UI state so button and character sprite respond instantly
+        store.dispatch(setIsMicOn(nextState));
+        try {
+            const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
+            gameInstance?.updateMicStatus(nextState);
+        } catch (uiErr) {
+            console.warn("[LiveKit] UI mic update warning:", uiErr);
+        }
+
+        // 2. In lobby preview mode (before room connection)
         if (!this.room) {
-            const nextMic = !store.getState().livekit.isMicOn;
             if (this.lobbyStream) {
-                this.lobbyStream
-                    .getAudioTracks()
-                    .forEach((t) => (t.enabled = nextMic));
+                this.lobbyStream.getAudioTracks().forEach((t) => {
+                    t.enabled = nextState;
+                    if (!nextState) {
+                        try { t.stop(); } catch { }
+                    }
+                });
             }
-            store.dispatch(setIsMicOn(nextMic));
             return;
         }
 
-        const nextState = !store.getState().livekit.isMicOn;
-        try {
-            await this.room.localParticipant.setMicrophoneEnabled(nextState);
-            store.dispatch(setIsMicOn(nextState));
+        // 3. Inside LiveKit room
+        if (!nextState) {
+            // Turning mic OFF: Mute, stop hardware capture and unpublish so OS/browser mic dot turns OFF
+            try {
+                await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
 
-            const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
-            gameInstance?.updateMicStatus(nextState);
-        } catch (err) {
-            console.error("[LiveKit] Failed to toggle microphone:", err);
+                const audioPubs = this.room.localParticipant
+                    .getTrackPublications()
+                    .filter((p) => p.kind === Track.Kind.Audio || p.source === Track.Source.Microphone);
+
+                for (const pub of audioPubs) {
+                    if (pub.track) {
+                        try {
+                            pub.track.mediaStreamTrack.enabled = false;
+                            pub.track.mediaStreamTrack.stop();
+                        } catch { }
+                        await this.room.localParticipant.unpublishTrack(pub.track as LocalTrack).catch(() => {});
+                    }
+                }
+                console.log("[LiveKit] Microphone completely disabled and hardware stopped");
+            } catch (err) {
+                console.error("[LiveKit] Error disabling microphone:", err);
+            }
+        } else {
+            // Turning mic ON: Re-acquire fresh audio track and publish
+            try {
+                await this.room.localParticipant.setMicrophoneEnabled(true);
+                console.log("[LiveKit] Microphone enabled and published");
+            } catch (err) {
+                console.error("[LiveKit] Failed to enable microphone:", err);
+                // Revert state if permission denied
+                store.dispatch(setIsMicOn(false));
+                try {
+                    const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
+                    gameInstance?.updateMicStatus(false);
+                } catch { }
+                alert("Could not access microphone. Please check your browser's microphone permissions.");
+            }
         }
     }
 
@@ -675,6 +887,21 @@ class LiveKitService {
         if (this.room) {
             await this.room.localParticipant.setCameraEnabled(false).catch(() => { });
             await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => { });
+
+            // Stop and unpublish all audio tracks cleanly
+            const audioPubs = this.room.localParticipant
+                .getTrackPublications()
+                .filter((p) => p.kind === Track.Kind.Audio || p.source === Track.Source.Microphone);
+
+            for (const pub of audioPubs) {
+                if (pub.track) {
+                    try {
+                        pub.track.mediaStreamTrack.enabled = false;
+                        pub.track.mediaStreamTrack.stop();
+                    } catch { }
+                    await this.room.localParticipant.unpublishTrack(pub.track as LocalTrack).catch(() => {});
+                }
+            }
         }
 
         store.dispatch(clearMyCameraTrack());
@@ -682,10 +909,12 @@ class LiveKitService {
         store.dispatch(setIsMicOn(false));
         store.dispatch(setHasMediaStarted(false));
 
-        const gameInstance = phaserGame.scene.keys.GameScene as GameScene;
-        gameInstance?.updateWebcamStatus(false);
-        gameInstance?.updateMicStatus(false);
-        gameInstance?.updateDisconnectStatus(true);
+        try {
+            const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
+            gameInstance?.updateWebcamStatus(false);
+            gameInstance?.updateMicStatus(false);
+            gameInstance?.updateDisconnectStatus(true);
+        } catch { }
         console.log("[LiveKit] Webcam and mic stopped (disconnected)");
     }
 }

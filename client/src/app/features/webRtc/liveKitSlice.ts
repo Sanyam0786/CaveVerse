@@ -137,15 +137,11 @@ const liveKitSlice = createSlice({
             state.isConnected = false;
         },
 
-        /** Clears remote tracks and media when stepping out of an office into the hallway */
+        /** Clears remote tracks and screen share when stepping out of an office into the hallway */
         clearOfficeMedia: (state) => {
             state.remoteParticipants = new Map();
             state.myScreenTrack = null;
-            state.myCameraTrack = null;
             state.isScreenSharing = false;
-            state.isCameraOn = false;
-            state.isMicOn = false;
-            state.isConnected = false;
         },
     },
 });

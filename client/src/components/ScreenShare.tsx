@@ -70,6 +70,13 @@ const ScreenShare = ({
                 }))
     );
 
+    // Automatically open the Screen Share dialog when someone in the office shares their screen
+    // useEffect(() => {
+    //     if (remoteScreenTracks.length > 0) {
+    //         setScreenDialogOpen(true);
+    //     }
+    // }, [remoteScreenTracks.length, setScreenDialogOpen]);
+
     const hasContent = isScreenSharing || remoteScreenTracks.length > 0;
 
     const startScreenSharing = async () => {

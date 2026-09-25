@@ -185,7 +185,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     playerStoppedScreenSharing() {
-        this.myPlayer.playerStoppedScreenSharing();
+        // Handled by LiveKitService
     }
 
     addNewOfficeChatMessage(message: string) {

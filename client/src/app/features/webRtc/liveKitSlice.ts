@@ -46,10 +46,11 @@ const liveKitSlice = createSlice({
     reducers: {
         /** Called when a remote participant publishes a track */
         addRemoteTrack: (state, action: PayloadAction<RemoteTrackEntry>) => {
-            const { participantId } = action.payload;
+            const { participantId, trackSid } = action.payload;
             const existing = state.remoteParticipants.get(participantId) || [];
+            const filtered = existing.filter((t) => t.trackSid !== trackSid);
             const updated = new Map(state.remoteParticipants);
-            updated.set(participantId, [...existing, action.payload]);
+            updated.set(participantId, [...filtered, action.payload]);
             state.remoteParticipants = updated;
         },
 
@@ -135,6 +136,17 @@ const liveKitSlice = createSlice({
             state.hasMediaStarted = false;
             state.isConnected = false;
         },
+
+        /** Clears remote tracks and media when stepping out of an office into the hallway */
+        clearOfficeMedia: (state) => {
+            state.remoteParticipants = new Map();
+            state.myScreenTrack = null;
+            state.myCameraTrack = null;
+            state.isScreenSharing = false;
+            state.isCameraOn = false;
+            state.isMicOn = false;
+            state.isConnected = false;
+        },
     },
 });
 
@@ -151,6 +163,7 @@ export const {
     setHasMediaStarted,
     setIsConnected,
     resetLiveKitState,
+    clearOfficeMedia,
 } = liveKitSlice.actions;
 
 export default liveKitSlice.reducer;

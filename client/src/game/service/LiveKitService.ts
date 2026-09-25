@@ -1,6 +1,7 @@
 import {
     Room,
     RoomEvent,
+    Participant,
     RemoteParticipant,
     RemoteTrackPublication,
     RemoteTrack,
@@ -15,6 +16,7 @@ import store from "../../app/store";
 import {
     addRemoteTrack,
     removeRemoteTrack,
+    removeParticipant,
     setMyScreenTrack,
     clearMyScreenTrack,
     setMyCameraTrack,
@@ -23,6 +25,7 @@ import {
     setIsMicOn,
     setHasMediaStarted,
     setIsConnected,
+    clearOfficeMedia,
 } from "../../app/features/webRtc/liveKitSlice";
 import phaserGame from "../main";
 import { GameScene } from "../scenes/GameScene";
@@ -31,6 +34,8 @@ class LiveKitService {
     private static instance: LiveKitService;
     private room: Room | null = null;
     private lobbyStream: MediaStream | null = null;
+    private currentOffice: string | null = null;
+    private isStoppingScreenShare = false;
 
     private constructor() { }
 
@@ -41,11 +46,15 @@ class LiveKitService {
         return LiveKitService.instance;
     }
 
-    // ── Connection ──────────────────────────────────────────────────────────────
+    public getCurrentOffice(): string | null {
+        return this.currentOffice;
+    }
+
+    // ── Connection (Background Lobby) ──────────────────────────────────────────
 
     public async connect(url: string, token: string): Promise<void> {
         if (this.room) {
-            await this.room.disconnect();
+            await this.room.disconnect().catch(() => { });
         }
 
         this.room = new Room({
@@ -61,37 +70,68 @@ class LiveKitService {
 
         // ── Track events ──────────────────────────────────────────────────────
         this.room.on(
+            RoomEvent.TrackPublished,
+            (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+                console.log(
+                    `[LiveKit] Remote track published: ${participant.identity} -> ${pub.source} (${pub.kind})`
+                );
+                if (this.isParticipantInSameOffice(participant.identity)) {
+                    if (pub.setSubscribed) pub.setSubscribed(true);
+                }
+            }
+        );
+
+        this.room.on(
             RoomEvent.TrackSubscribed,
             (
                 track: RemoteTrack,
                 pub: RemoteTrackPublication,
                 participant: RemoteParticipant
             ) => {
-                console.log(
-                    `[LiveKit] Track subscribed from ${participant.identity}: ${track.kind} / ${pub.source}`
-                );
-                if (track.kind === "audio") {
-                    try {
-                        const el = track.attach();
-                        el.id = `lk-audio-${participant.identity}-${track.sid}`;
-                    } catch (e) {
-                        console.warn("[LiveKit] Audio attach warning:", e);
+                let participantOffice: string | null = null;
+                try {
+                    if (participant.metadata) {
+                        participantOffice =
+                            JSON.parse(participant.metadata).office || null;
                     }
-                }
-                if (pub.source === Track.Source.ScreenShare) {
-                    pub.setVideoQuality(VideoQuality.HIGH);
-                }
-                store.dispatch(
-                    addRemoteTrack({
-                        participantId: participant.identity,
-                        participantName:
-                            participant.name || participant.identity,
-                        trackSid: track.sid,
-                        kind: track.kind as "audio" | "video",
-                        source: pub.source, // "camera" | "microphone" | "screen_share"
-                        mediaStreamTrack: track.mediaStreamTrack,
-                    })
+                } catch { }
+
+                const isSameOffice = this.isParticipantInSameOffice(
+                    participant.identity,
+                    participantOffice
                 );
+
+                console.log(
+                    `[LiveKit] Track subscribed from ${participant.identity} (${pub.source}, kind: ${track.kind}): isSameOffice=${isSameOffice}, currentOffice=${this.currentOffice}`
+                );
+
+                if (isSameOffice) {
+                    if (track.kind === "audio") {
+                        try {
+                            const el = track.attach();
+                            el.id = `lk-audio-${participant.identity}-${track.sid}`;
+                        } catch (e) {
+                            console.warn("[LiveKit] Audio attach warning:", e);
+                        }
+                    }
+                    if (pub.source === Track.Source.ScreenShare) {
+                        pub.setVideoQuality(VideoQuality.HIGH);
+                    }
+                    store.dispatch(
+                        addRemoteTrack({
+                            participantId: participant.identity,
+                            participantName:
+                                participant.name || participant.identity,
+                            trackSid: track.sid,
+                            kind: track.kind as "audio" | "video",
+                            source: pub.source,
+                            mediaStreamTrack: track.mediaStreamTrack,
+                        })
+                    );
+                } else {
+                    // Not in the same office — unsubscribe so bandwidth isn't wasted
+                    if (pub.setSubscribed) pub.setSubscribed(false);
+                }
             }
         );
 
@@ -108,6 +148,10 @@ class LiveKitService {
                 if (track.kind === "audio") {
                     try {
                         track.detach();
+                        const el = document.getElementById(
+                            `lk-audio-${participant.identity}-${track.sid}`
+                        );
+                        el?.remove();
                     } catch (e) {
                         console.warn("[LiveKit] Audio detach warning:", e);
                     }
@@ -121,14 +165,46 @@ class LiveKitService {
             }
         );
 
+        // Remote participant updated their office metadata
+        this.room.on(
+            RoomEvent.ParticipantMetadataChanged,
+            (_metadata: string, participant: Participant) => {
+                this.syncParticipantTracks(participant as RemoteParticipant);
+            }
+        );
+
+        // Remote participant left the room entirely
+        this.room.on(
+            RoomEvent.ParticipantDisconnected,
+            (participant: RemoteParticipant) => {
+                if (typeof document !== "undefined") {
+                    document
+                        .querySelectorAll(`audio[id^="lk-audio-${participant.identity}-"]`)
+                        .forEach((el) => el.remove());
+                }
+                store.dispatch(removeParticipant(participant.identity));
+            }
+        );
+
         this.room.on(RoomEvent.Disconnected, () => {
-            console.log("[LiveKit] Disconnected from room");
+            console.log("[LiveKit] Disconnected from lobby room");
             store.dispatch(setIsConnected(false));
         });
 
         this.room.on(RoomEvent.Connected, () => {
-            console.log("[LiveKit] Connected to room:", this.room.name);
+            console.log("[LiveKit] Connected to background lobby room:", this.room?.name);
             store.dispatch(setIsConnected(true));
+
+            // Set initial metadata (lobby area, no office)
+            if (this.currentOffice) {
+                this.room?.localParticipant.setMetadata(
+                    JSON.stringify({ office: this.currentOffice })
+                ).catch(() => { });
+            } else {
+                this.room?.localParticipant.setMetadata(
+                    JSON.stringify({ office: null })
+                ).catch(() => { });
+            }
         });
 
         await this.room.connect(url, token, {
@@ -141,52 +217,245 @@ class LiveKitService {
             },
         });
 
-        // If user already started webcam in the lobby, transfer to LiveKit room
+        // Clean up any lobby preview stream
+        if (this.lobbyStream) {
+            this.lobbyStream.getTracks().forEach((t) => t.stop());
+            this.lobbyStream = null;
+        }
+    }
+
+    /**
+     * Checks if a participant is in the same office as the local player.
+     * Evaluates LiveKit metadata as well as Colyseus office membership for complete reliability.
+     */
+    public isParticipantInSameOffice(
+        participantSessionId: string,
+        participantOffice?: string | null
+    ): boolean {
+        if (!this.currentOffice) return false;
+
+        // 1. Direct metadata match if provided
+        if (participantOffice && participantOffice === this.currentOffice) {
+            return true;
+        }
+
+        // 2. Colyseus synchronized office members
+        try {
+            const gameScene = phaserGame?.scene?.keys?.GameScene as any;
+            const network = gameScene?.network;
+            if (network?.getOfficeData) {
+                const officeData = network.getOfficeData(
+                    this.currentOffice as any
+                );
+                if (
+                    officeData?.members &&
+                    officeData.members.has(participantSessionId)
+                ) {
+                    return true;
+                }
+            }
+        } catch { }
+
+        // 3. LiveKit participant metadata direct parse
+        try {
+            const p = this.room?.getParticipantByIdentity(participantSessionId);
+            if (p?.metadata) {
+                const parsed = JSON.parse(p.metadata);
+                if (parsed.office === this.currentOffice) return true;
+            }
+        } catch { }
+
+        return false;
+    }
+
+    /**
+     * Resynchronizes media tracks for all remote participants in the room.
+     */
+    public syncAllParticipants(): void {
+        if (!this.room) return;
+        this.room.remoteParticipants.forEach((participant) => {
+            this.syncParticipantTracks(participant);
+        });
+    }
+
+    /**
+     * Synchronizes tracks of a single remote participant based on current office.
+     */
+    private syncParticipantTracks(participant: RemoteParticipant): void {
+        if (!participant || participant === this.room?.localParticipant) return;
+
+        let participantOffice: string | null = null;
+        try {
+            if (participant.metadata) {
+                participantOffice =
+                    JSON.parse(participant.metadata).office || null;
+            }
+        } catch { }
+
+        const isSameOffice = this.isParticipantInSameOffice(
+            participant.identity,
+            participantOffice
+        );
+
+        participant.trackPublications.forEach((pub) => {
+            const track = pub.track;
+            if (!track) {
+                if (isSameOffice && pub.setSubscribed) {
+                    pub.setSubscribed(true);
+                }
+                return;
+            }
+
+            if (isSameOffice) {
+                if (pub.setSubscribed) pub.setSubscribed(true);
+
+                if (track.kind === "audio") {
+                    try {
+                        let el = document.getElementById(
+                            `lk-audio-${participant.identity}-${track.sid}`
+                        ) as HTMLAudioElement;
+                        if (!el) {
+                            el = track.attach();
+                            el.id = `lk-audio-${participant.identity}-${track.sid}`;
+                        }
+                    } catch (e) {
+                        console.warn("[LiveKit] Audio attach warning:", e);
+                    }
+                }
+                if (pub.source === Track.Source.ScreenShare) {
+                    pub.setVideoQuality(VideoQuality.HIGH);
+                }
+                store.dispatch(
+                    addRemoteTrack({
+                        participantId: participant.identity,
+                        participantName:
+                            participant.name || participant.identity,
+                        trackSid: track.sid,
+                        kind: track.kind as "audio" | "video",
+                        source: pub.source,
+                        mediaStreamTrack: track.mediaStreamTrack,
+                    })
+                );
+            } else {
+                if (pub.setSubscribed) pub.setSubscribed(false);
+
+                if (track.kind === "audio") {
+                    try {
+                        track.detach();
+                        const el = document.getElementById(
+                            `lk-audio-${participant.identity}-${track.sid}`
+                        );
+                        el?.remove();
+                    } catch { }
+                }
+
+                store.dispatch(
+                    removeRemoteTrack({
+                        participantId: participant.identity,
+                        trackSid: track.sid,
+                    })
+                );
+            }
+        });
+    }
+
+    /**
+     * Called when the player enters an office room.
+     * Updates participant metadata and connects office media instantly
+     * WITHOUT tearing down or reconnecting the background LiveKit connection.
+     */
+    public async joinOffice(officeName: string): Promise<void> {
+        this.currentOffice = officeName;
+        console.log(`[LiveKit] Joined office zone: ${officeName}`);
+
+        if (this.room) {
+            await this.room.localParticipant.setMetadata(
+                JSON.stringify({ office: officeName })
+            ).catch(console.warn);
+
+            this.room.remoteParticipants.forEach((participant) => {
+                this.syncParticipantTracks(participant);
+            });
+        }
+    }
+
+    /**
+     * Called when the player leaves an office room into the hallway.
+     * The character exits immediately and UI updates with zero freeze.
+     * Stopping screen sharing and unpublishing media runs smoothly in the background.
+     */
+    public leaveOffice(): void {
+        this.currentOffice = null;
+        console.log("[LiveKit] Left office zone; character exits immediately, media stopping in background");
+
+        // 1. Immediately update UI so character walks out smoothly with zero lag or freeze
+        store.dispatch(clearOfficeMedia());
+
+        const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
+        gameInstance?.updateWebcamStatus(false);
+        gameInstance?.updateMicStatus(false);
+        gameInstance?.updateDisconnectStatus(true);
+
+        // 2. Perform stop screen sharing and media unpublishing in the background
+        setTimeout(async () => {
+            if (this.room) {
+                // Stop local screen sharing cleanly in background
+                await this.stopScreenShare().catch(() => { });
+
+                // Turn off camera & mic publications (without destroying WebRTC peer connection)
+                await this.room.localParticipant.setCameraEnabled(false).catch(() => { });
+                await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => { });
+
+                // Update metadata to null so peers know we left
+                await this.room.localParticipant.setMetadata(
+                    JSON.stringify({ office: null })
+                ).catch(console.warn);
+
+                // Unsubscribe & detach all remote participants
+                this.room.remoteParticipants.forEach((participant) => {
+                    participant.trackPublications.forEach((pub) => {
+                        if (pub.setSubscribed) pub.setSubscribed(false);
+                        if (pub.track?.kind === "audio") {
+                            try {
+                                pub.track.detach();
+                            } catch { }
+                        }
+                    });
+                });
+            }
+
+            // Clean up attached audio elements
+            if (typeof document !== "undefined") {
+                document
+                    .querySelectorAll('audio[id^="lk-audio-"]')
+                    .forEach((el) => el.remove());
+            }
+        }, 50);
+    }
+
+    /**
+     * Complete teardown: called ONLY when leaving the entire game session.
+     */
+    public async disconnect(): Promise<void> {
+        this.currentOffice = null;
+        if (this.room) {
+            await this.stopScreenShare().catch(() => { });
+            await this.room.disconnect().catch(() => { });
+            this.room = null;
+        }
+
         if (this.lobbyStream) {
             this.lobbyStream.getTracks().forEach((t) => t.stop());
             this.lobbyStream = null;
         }
 
-        if (store.getState().livekit.isCameraOn) {
-            this.room.localParticipant
-                .setCameraEnabled(true)
-                .then((pub) => {
-                    const track =
-                        pub?.track?.mediaStreamTrack ||
-                        this.room?.localParticipant.getTrackPublication(
-                            Track.Source.Camera
-                        )?.track?.mediaStreamTrack;
-                    if (track) {
-                        store.dispatch(setMyCameraTrack(track));
-                    }
-                    const gameInstance = phaserGame.scene.keys
-                        .GameScene as GameScene;
-                    gameInstance?.updateWebcamStatus(true);
-                })
-                .catch((err) => {
-                    console.warn("[LiveKit] Auto-enabling camera on connect failed:", err);
-                });
+        if (typeof document !== "undefined") {
+            document
+                .querySelectorAll('audio[id^="lk-audio-"]')
+                .forEach((el) => el.remove());
         }
 
-        if (store.getState().livekit.isMicOn) {
-            this.room.localParticipant
-                .setMicrophoneEnabled(true)
-                .then(() => {
-                    const gameInstance = phaserGame.scene.keys
-                        .GameScene as GameScene;
-                    gameInstance?.updateMicStatus(true);
-                })
-                .catch((err) => {
-                    console.warn("[LiveKit] Auto-enabling mic on connect failed:", err);
-                });
-        }
-    }
-
-    public async disconnect(): Promise<void> {
-        if (this.room) {
-            await this.room.disconnect();
-            this.room = null;
-        }
+        store.dispatch(clearOfficeMedia());
         store.dispatch(setIsConnected(false));
     }
 
@@ -234,28 +503,32 @@ class LiveKitService {
     }
 
     public async stopScreenShare(): Promise<void> {
-        if (!this.room) return;
+        if (!this.room || this.isStoppingScreenShare) return;
+        this.isStoppingScreenShare = true;
 
-        const pubs = this.room.localParticipant
-            .getTrackPublications()
-            .filter((p) => p.source === Track.Source.ScreenShare);
-
-        for (const pub of pubs) {
-            if (pub.track) {
-                await this.room.localParticipant.unpublishTrack(
-                    pub.track as LocalTrack
-                );
-            }
-        }
-
+        // 1. Immediately update UI state so there is zero delay or freeze
         store.dispatch(clearMyScreenTrack());
 
-        // Notify Phaser scene
-        const gameInstance = phaserGame.scene.keys
-            .GameScene as GameScene;
-        gameInstance?.playerStoppedScreenSharing();
+        try {
+            const pubs = this.room.localParticipant
+                .getTrackPublications()
+                .filter((p) => p.source === Track.Source.ScreenShare);
 
-        console.log("[LiveKit] Screen sharing stopped");
+            for (const pub of pubs) {
+                if (pub.track) {
+                    try {
+                        pub.track.mediaStreamTrack.stop();
+                    } catch { }
+                    await this.room.localParticipant.unpublishTrack(
+                        pub.track as LocalTrack
+                    ).catch(() => { });
+                }
+            }
+
+            console.log("[LiveKit] Screen sharing stopped");
+        } finally {
+            this.isStoppingScreenShare = false;
+        }
     }
 
     // ── Camera & Microphone ─────────────────────────────────────────────────────
@@ -400,8 +673,8 @@ class LiveKitService {
         }
 
         if (this.room) {
-            await this.room.localParticipant.setCameraEnabled(false).catch(() => {});
-            await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+            await this.room.localParticipant.setCameraEnabled(false).catch(() => { });
+            await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => { });
         }
 
         store.dispatch(clearMyCameraTrack());

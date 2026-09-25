@@ -115,6 +115,8 @@ export class MyRoom extends Room<MyRoomState> {
                 type: messageType,
             });
         });
+
+        // User joined office chat and presence
     }
 
     private handleOfficeLeave(
@@ -285,15 +287,22 @@ export class MyRoom extends Room<MyRoomState> {
         // sending whole chat to the newly joined user
         client.send("GET_GLOBAL_CHAT", this.state.globalChat);
 
-        // Generate and send a LiveKit token so the client can connect to the media server.
-        // We use this.roomId as the LiveKit room name so all players in the same
-        // Colyseus room are placed in the same LiveKit room automatically.
+        // ── LiveKit Lobby Room ────────────────────────────────────────────────
+        // Keep the user in the lobby area LiveKit room continuously in the background.
+        // When entering/leaving an office room, office scope is managed via participant
+        // metadata without tearing down or reconnecting the WebRTC connection.
         generateLiveKitToken(this.roomId, client.sessionId, username)
             .then((token) => {
-                client.send("LIVEKIT_TOKEN", { token, url: LIVEKIT_URL });
+                client.send("LIVEKIT_TOKEN", {
+                    token,
+                    url: LIVEKIT_URL,
+                });
             })
             .catch((err) => {
-                console.error("[LiveKit] Failed to generate token:", err);
+                console.error(
+                    `[LiveKit] Failed to generate token for room ${this.roomId}:`,
+                    err
+                );
             });
     }
 

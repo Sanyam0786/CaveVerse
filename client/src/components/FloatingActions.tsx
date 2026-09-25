@@ -75,70 +75,72 @@ const FloatingActions = ({
                     </TooltipContent>
                 </Tooltip>
 
-                {/* Screen Sharing */}
+                {/* Media Services (Screen Share, Video Call, Audio) only active within office rooms */}
                 {isInsideOffice && (
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="outline"
-                                className="cursor-pointer "
-                                onClick={() => {
-                                    setScreenDialogOpen(true);
-                                }}
-                            >
-                                <ScreenShare />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p className="text-black">Screen Sharing</p>
-                        </TooltipContent>
-                    </Tooltip>
-                )}
+                    <>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                        setScreenDialogOpen(true);
+                                    }}
+                                >
+                                    <ScreenShare />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p className="text-black">Screen Sharing</p>
+                            </TooltipContent>
+                        </Tooltip>
 
-                {hasMediaStarted ? (
-                    // Player has given access to his webcam / mic
-                    <WebcamButtons
-                        setShouldConnectToOtherPlayers={
-                            setShouldConnectToOtherPlayers
-                        }
-                    />
-                ) : (
-                    // Player has not given access to his webcam
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="outline"
-                                className="cursor-pointer transition-all ease-in-out"
-                                onClick={async () => {
-                                    const gameInstance = phaserGame.scene.keys
-                                        .GameScene as GameScene;
-                                    await gameInstance.startWebcam(
-                                        shouldConnectToOtherPlayers
-                                    );
-                                    toast(
-                                        <div className="font-semibold">
-                                            Camera Started
-                                        </div>
-                                    );
-                                }}
-                            >
-                                <AnimatePresence mode="wait" initial={false}>
-                                    <motion.div
-                                        key="mic-off"
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        transition={{ duration: 0.2 }}
+                        {hasMediaStarted ? (
+                            // Player has given access to his webcam / mic
+                            <WebcamButtons
+                                setShouldConnectToOtherPlayers={
+                                    setShouldConnectToOtherPlayers
+                                }
+                            />
+                        ) : (
+                            // Player has not given access to his webcam
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        className="cursor-pointer transition-all ease-in-out"
+                                        onClick={async () => {
+                                            const gameInstance = phaserGame.scene.keys
+                                                .GameScene as GameScene;
+                                            await gameInstance.startWebcam(
+                                                shouldConnectToOtherPlayers
+                                            );
+                                            toast(
+                                                <div className="font-semibold">
+                                                    Camera Started
+                                                </div>
+                                            );
+                                        }}
                                     >
-                                        <CameraOff />
-                                    </motion.div>
-                                </AnimatePresence>
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p className="text-black">Turn on camera</p>
-                        </TooltipContent>
-                    </Tooltip>
+                                        <AnimatePresence mode="wait" initial={false}>
+                                            <motion.div
+                                                key="mic-off"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0.2 }}
+                                            >
+                                                <CameraOff />
+                                            </motion.div>
+                                        </AnimatePresence>
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p className="text-black">Turn on camera</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                    </>
                 )}
             </TooltipProvider>
         </motion.div>

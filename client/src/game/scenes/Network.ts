@@ -249,7 +249,13 @@ export default class Network {
         // ── LiveKit token received on join ──────────────────────────────────────
         this.room.onMessage(
             "LIVEKIT_TOKEN",
-            async ({ token, url }: { token: string; url: string }) => {
+            async ({
+                token,
+                url,
+            }: {
+                token: string;
+                url: string;
+            }) => {
                 let liveKitUrl = url;
                 if (typeof window !== "undefined" && window.location) {
                     if (
@@ -261,7 +267,10 @@ export default class Network {
                         liveKitUrl = `${proto}//${window.location.host}/livekit`;
                     }
                 }
-                console.log("[LiveKit] Received token, connecting to:", liveKitUrl);
+                console.log(
+                    "[LiveKit] Received background lobby token, connecting to:",
+                    liveKitUrl
+                );
                 try {
                     await liveKitService.connect(liveKitUrl, token);
                 } catch (err) {
@@ -281,7 +290,8 @@ export default class Network {
                         type,
                     })
                 );
-                // LiveKit handles media automatically — no manual peer calls needed
+                // Synchronize LiveKit media tracks immediately
+                liveKitService.syncAllParticipants();
             }
         );
 
@@ -308,7 +318,8 @@ export default class Network {
                         type,
                     })
                 );
-                // No manual disconnect needed — LiveKit handles unsubscription automatically
+                // Synchronize LiveKit media tracks immediately
+                liveKitService.syncAllParticipants();
             }
         );
 

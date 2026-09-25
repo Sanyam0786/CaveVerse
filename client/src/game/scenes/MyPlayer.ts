@@ -178,27 +178,26 @@ export class MyPlayer extends Player {
         store.dispatch(setCurrentOfficeName(prettyName));
         store.dispatch(setShowOfficeChat(true));
 
-        // notify other players & connect to the office
+        // Notify server for office chat & presence
         this.network.joinOffice(this.currentOffice);
 
-        // If webcam is on, re-publish so new office members can see us
-        // LiveKit handles subscriptions automatically — no manual calls needed
-        if (store.getState().livekit.isCameraOn) {
-            liveKitService.startWebcam().catch(console.error);
-        }
+        // Switch LiveKit media scope to this office immediately without reconnecting
+        liveKitService.joinOffice(officeName).catch(console.error);
     }
 
     private leaveOffice() {
-        this.network.leaveOffice(this.currentOffice);
+        if (!this.currentOffice) return;
+        const prevOffice = this.currentOffice;
+        this.currentOffice = null;
+
+        this.network.leaveOffice(prevOffice);
 
         store.dispatch(setCurrentOfficeName(null));
         store.dispatch(clearOfficeChat());
         store.dispatch(setShowOfficeChat(false));
 
-        // LiveKit unsubscribes from tracks automatically when participants leave
-        // No manual peer disconnection needed
-
-        this.currentOffice = null;
+        // Character exits immediately first; media and screen share stop in the background
+        liveKitService.leaveOffice();
     }
 
     private handleOfficeJoiningAndLeaving() {
@@ -208,6 +207,9 @@ export class MyPlayer extends Player {
             const office = this.officeManager.update(x, y);
 
             if (office && this.currentOffice !== office) {
+                if (this.currentOffice) {
+                    this.leaveOffice();
+                }
                 this.joinOffice(office);
             } else if (!office && this.currentOffice) {
                 this.leaveOffice();
@@ -338,7 +340,7 @@ export class MyPlayer extends Player {
     }
 
     playerStoppedScreenSharing() {
-        liveKitService.stopScreenShare();
+        // Screen sharing state is managed directly by LiveKitService
     }
 
     /**

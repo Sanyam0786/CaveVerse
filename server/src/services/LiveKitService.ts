@@ -28,7 +28,13 @@ export async function generateLiveKitToken(
         roomJoin: true,
         canPublish: true,
         canSubscribe: true,
-        canPublishSources: [TrackSource.CAMERA, TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO],
+        canPublishSources: [
+            TrackSource.CAMERA,
+            TrackSource.MICROPHONE,
+            TrackSource.SCREEN_SHARE,
+            TrackSource.SCREEN_SHARE_AUDIO,
+        ],
+        canUpdateOwnMetadata: true,
     });
 
     return at.toJwt();

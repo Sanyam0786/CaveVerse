@@ -48,7 +48,7 @@ const RoomDecider = ({
                     >
                         Join Public Room
                     </Button>
-                    <Button
+                    {/* <Button
                         className="w-full cursor-pointer"
                         onClick={() => {
                             setShowCreateOrJoinCustomRoom(true);
@@ -56,7 +56,7 @@ const RoomDecider = ({
                         }}
                     >
                         Join/Create Custom Room
-                    </Button>
+                    </Button> */}
                 </CardContent>
             </Card>
         </>

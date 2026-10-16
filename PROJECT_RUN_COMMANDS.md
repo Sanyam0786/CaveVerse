@@ -74,9 +74,18 @@ npm install
 Open **3 separate terminal windows / tabs** in the project directory:
 
 ### Terminal 1: LiveKit SFU Media Server
-```bash
-livekit-server --dev --rtc.force_tcp
-```
+
+- **macOS:**
+  ```bash
+  livekit-server --dev --rtc.force_tcp
+  ```
+
+- **Windows (via Winget or PowerShell):**
+  ```powershell
+  & "C:\Users\SHASHANK\.gemini\antigravity\bin\livekit-server.exe" --dev --rtc.force_tcp
+  ```
+
+
 > **Port:** `7880`  
 > **Note:** `--dev` uses default development credentials (`devkey` / `secret`). `--rtc.force_tcp` ensures stable WebRTC connectivity across firewalls and local networks.
 

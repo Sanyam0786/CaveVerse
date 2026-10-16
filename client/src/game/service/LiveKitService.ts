@@ -634,6 +634,48 @@ class LiveKitService {
         }
     }
 
+    private async enableCameraWithFallback(): Promise<any> {
+        if (!this.room) return null;
+        const isMobile = typeof navigator !== "undefined" && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // 1. Primary camera enable attempt
+        try {
+            if (isMobile) {
+                return await this.room.localParticipant.setCameraEnabled(true, { facingMode: "user" });
+            } else {
+                return await this.room.localParticipant.setCameraEnabled(true);
+            }
+        } catch (firstErr: any) {
+            console.warn("[LiveKit] Primary camera enable failed, probing available video input devices:", firstErr);
+
+            // 2. Iterate through enumerated video input devices
+            if (navigator.mediaDevices?.enumerateDevices) {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter((d) => d.kind === "videoinput");
+                    console.log("[LiveKit] Found video input devices:", videoDevices.map((d) => d.label || d.deviceId));
+
+                    for (const dev of videoDevices) {
+                        if (!dev.deviceId) continue;
+                        try {
+                            console.log(`[LiveKit] Fallback attempt with deviceId: ${dev.deviceId} (${dev.label || "Camera"})`);
+                            return await this.room.localParticipant.setCameraEnabled(true, {
+                                deviceId: { exact: dev.deviceId },
+                            });
+                        } catch (devErr) {
+                            console.warn(`[LiveKit] Device ${dev.deviceId} failed:`, devErr);
+                        }
+                    }
+                } catch (enumErr) {
+                    console.warn("[LiveKit] Device enumeration failed:", enumErr);
+                }
+            }
+
+            // 3. Final attempt without constraints
+            return await this.room.localParticipant.setCameraEnabled(true);
+        }
+    }
+
     // ── Camera & Microphone ─────────────────────────────────────────────────────
 
     public async startWebcam(): Promise<void> {
@@ -683,16 +725,7 @@ class LiveKitService {
         }
 
         try {
-            // Attempt with front-facing camera on mobile devices
-            let pub;
-            try {
-                pub = await this.room.localParticipant.setCameraEnabled(true, {
-                    facingMode: "user",
-                });
-            } catch (camErr) {
-                console.warn("[LiveKit] Failed with facingMode: user, falling back to default:", camErr);
-                pub = await this.room.localParticipant.setCameraEnabled(true);
-            }
+            const pub = await this.enableCameraWithFallback();
 
             const track =
                 pub?.track?.mediaStreamTrack ||
@@ -718,12 +751,13 @@ class LiveKitService {
             console.error("[LiveKit] Failed to enable camera:", err);
             const errName = err?.name || "Error";
             const errMsg = err?.message || String(err);
-            if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
-                alert("Camera permission denied. Please tap the lock / settings icon in your browser address bar and allow Camera access.");
-            } else {
-                alert(`Could not access camera (${errName}: ${errMsg}).\nPlease check your browser's camera permissions.`);
+            store.dispatch(setHasMediaStarted(true));
+
+            if (errName === "NotReadableError" || errName === "TrackStartError" || errMsg.includes("Could not start video source")) {
+                console.warn("[LiveKit] Physical camera hardware unavailable. Continuing in Audio/Mic mode.");
+            } else if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+                alert("Camera permission denied. Continuing in Audio mode.");
             }
-            return;
         }
 
         try {
@@ -731,6 +765,7 @@ class LiveKitService {
             store.dispatch(setIsMicOn(true));
             const gameInstance = phaserGame?.scene?.keys?.GameScene as GameScene;
             gameInstance?.updateMicStatus(true);
+            gameInstance?.updateDisconnectStatus(false);
         } catch (err) {
             console.warn("[LiveKit] Failed to enable microphone:", err);
         }
@@ -760,13 +795,7 @@ class LiveKitService {
         try {
             let pub;
             if (nextState) {
-                try {
-                    pub = await this.room.localParticipant.setCameraEnabled(true, {
-                        facingMode: "user",
-                    });
-                } catch {
-                    pub = await this.room.localParticipant.setCameraEnabled(true);
-                }
+                pub = await this.enableCameraWithFallback();
                 const track =
                     pub?.track?.mediaStreamTrack ||
                     this.room.localParticipant.getTrackPublication(
@@ -804,6 +833,8 @@ class LiveKitService {
             const errMsg = err?.message || String(err);
             if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
                 alert("Camera permission denied. Please allow Camera access in your browser settings.");
+            } else if (errName === "NotReadableError" || errName === "TrackStartError" || errMsg.includes("Could not start video source")) {
+                alert("Camera Hardware Unavailable (NotReadableError)\n\nYour camera is currently in use by another application (e.g. Zoom, Teams, Discord, OBS, or another open browser tab).\n\nPlease close other applications using your webcam and try again.");
             } else {
                 alert(`Could not toggle camera (${errName}: ${errMsg})`);
             }

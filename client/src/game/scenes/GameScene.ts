@@ -165,10 +165,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     private handlePlayerLeft(sessionId: string) {
-        this.otherPlayers.get(sessionId).destroy();
+        this.otherPlayers.get(sessionId)?.destroy();
         this.otherPlayers.delete(sessionId);
 
-        this.myPlayer.handlePlayerLeft(sessionId);
+        this.myPlayer?.handlePlayerLeft(sessionId);
     }
 
     enableKeys() {
@@ -281,6 +281,22 @@ export class GameScene extends Phaser.Scene {
         );
         phaserEvents.on(Event.PLAYER_JOINED, this.handlePlayerJoined, this);
         phaserEvents.on(Event.PLAYER_LEFT, this.handlePlayerLeft, this);
+
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            phaserEvents.off(
+                Event.INITIALIZE_PLAYER,
+                this.handleInitializingPlayer,
+                this
+            );
+            phaserEvents.off(Event.PLAYER_JOINED, this.handlePlayerJoined, this);
+            phaserEvents.off(Event.PLAYER_LEFT, this.handlePlayerLeft, this);
+            this.otherPlayers.forEach((p) => p.destroy());
+            this.otherPlayers.clear();
+            if (this.myPlayer) {
+                this.myPlayer.destroy();
+                this.myPlayer = undefined as any;
+            }
+        });
 
         this.network.handleServerMessages();
     }

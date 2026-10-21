@@ -6,6 +6,7 @@ import liveKitService from "../service/LiveKitService";
 import {
     addAvailableRooms,
     removeFromAvailableRooms,
+    clearAvailableRooms,
     setIsLoading,
 } from "../../app/features/room/roomSlice";
 import {
@@ -14,7 +15,6 @@ import {
     pushNewGlobalMessage,
     pushNewOfficeMessage,
 } from "../../app/features/chat/chatSlice";
-import { resetLiveKitState } from "../../app/features/webRtc/liveKitSlice";
 import { Event, phaserEvents } from "../EventBus";
 
 export default class Network {
@@ -37,6 +37,7 @@ export default class Network {
         store.dispatch(setIsLoading(false));
 
         this.lobby.onMessage("rooms", (rooms) => {
+            store.dispatch(clearAvailableRooms());
             rooms.forEach((room) => {
                 // public room is also included so we need to ignore it
                 if (room.name === "PUBLIC_ROOM") {
@@ -147,6 +148,21 @@ export default class Network {
         });
         this.lobby.leave();
         store.dispatch(setIsLoading(false));
+    };
+
+    /**
+     * Leaves the current room and rejoins the lobby room.
+     */
+    leaveRoom = async () => {
+        if (this.room) {
+            try {
+                await this.room.leave();
+            } catch (err) {
+                console.error("[Network] Error leaving room:", err);
+            }
+            this.room = undefined as any;
+        }
+        await this.joinLobbyRoom();
     };
 
     /**
@@ -282,7 +298,7 @@ export default class Network {
         // ── Office chat & presence ──────────────────────────────────────────────
         this.room.onMessage(
             "USER_JOINED_OFFICE",
-            ({ playerSessionId, username, message, type }) => {
+            ({ username, message, type }) => {
                 store.dispatch(
                     pushNewOfficeMessage({
                         username,
@@ -310,7 +326,7 @@ export default class Network {
 
         this.room.onMessage(
             "PLAYER_LEFT_OFFICE",
-            ({ playerSessionId, username, message, type }) => {
+            ({ username, message, type }) => {
                 store.dispatch(
                     pushNewOfficeMessage({
                         username,
@@ -356,7 +372,7 @@ export default class Network {
         });
 
         // ── Player presence ────────────────────────────────────────────────────
-        this.room.state.players.onRemove((player, sessionId) => {
+        this.room.state.players.onRemove((_player, sessionId) => {
             phaserEvents.emit(Event.PLAYER_LEFT, sessionId);
         });
 

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import phaserGame from "../../game/main";
 import { useAppSelector } from "../../app/hooks";
+import store from "../../app/store";
 import CharacterCarousel from "./CharacterCarousel";
 import liveKitService from "../../game/service/LiveKitService";
 import { WebcamButtons } from "../FloatingActions";

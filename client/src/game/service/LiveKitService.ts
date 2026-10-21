@@ -7,8 +7,8 @@ import {
     RemoteTrack,
     LocalTrack,
     Track,
+    TrackPublication,
     createLocalScreenTracks,
-    createLocalTracks,
     ScreenSharePresets,
     VideoQuality,
 } from "livekit-client";
@@ -147,7 +147,7 @@ class LiveKitService {
             RoomEvent.TrackUnsubscribed,
             (
                 track: RemoteTrack,
-                pub: RemoteTrackPublication,
+                _pub: RemoteTrackPublication,
                 participant: RemoteParticipant
             ) => {
                 console.log(
@@ -201,7 +201,7 @@ class LiveKitService {
                 }
 
                 // If remote camera track is muted, immediately remove from UI so last frame does not freeze
-                if (pub.kind === "video" && (pub.source === Track.Source.Camera || pub.source === "camera")) {
+                if (pub.kind === "video" && pub.source === Track.Source.Camera) {
                     console.log(`[LiveKit] Remote camera muted: removing tile for ${participant.identity}`);
                     store.dispatch(
                         removeRemoteTrack({
@@ -226,7 +226,7 @@ class LiveKitService {
                 }
 
                 // If remote camera unmuted, re-add to UI if in same office
-                if (pub.kind === "video" && (pub.source === Track.Source.Camera || pub.source === "camera")) {
+                if (pub.kind === "video" && pub.source === Track.Source.Camera) {
                     if (this.isParticipantInSameOffice(participant.identity)) {
                         const track = pub.track;
                         if (track) {
@@ -373,7 +373,7 @@ class LiveKitService {
         if (!this.room) return null;
         const participant = this.room.getParticipantByIdentity(participantId);
         if (!participant) return null;
-        const pub = participant.getTrackPublication(trackSid);
+        const pub = participant.getTrackPublications().find((p) => p.trackSid === trackSid);
         const track = pub?.track;
         if (track && track.attach) {
             try {
@@ -394,7 +394,7 @@ class LiveKitService {
      * Synchronizes tracks of a single remote participant based on current office.
      */
     private syncParticipantTracks(participant: RemoteParticipant): void {
-        if (!participant || participant === this.room?.localParticipant) return;
+        if (!participant || participant.identity === this.room?.localParticipant.identity) return;
 
         let participantOffice: string | null = null;
         try {
@@ -541,6 +541,7 @@ class LiveKitService {
      */
     public async disconnect(): Promise<void> {
         this.currentOffice = null;
+        await this.stopWebcam().catch(() => {});
         if (this.room) {
             await this.stopScreenShare().catch(() => { });
             await this.room.disconnect().catch(() => { });
@@ -812,7 +813,7 @@ class LiveKitService {
                 // Completely stop and unpublish camera tracks so peers immediately remove the video tile
                 const camPubs = this.room.localParticipant
                     .getTrackPublications()
-                    .filter((p) => p.kind === Track.Kind.Video && (p.source === Track.Source.Camera || p.source === "camera"));
+                    .filter((p) => p.kind === Track.Kind.Video && p.source === Track.Source.Camera);
 
                 for (const pub of camPubs) {
                     if (pub.track) {

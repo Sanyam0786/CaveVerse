@@ -4,7 +4,6 @@ import {
     TooltipTrigger,
 } from "../components/ui/tooltip";
 import GitHubLogo from "../components/icons/GitHubLogo";
-import XLogo from "../components/icons/XLogo";
 import { Check, InfoIcon } from "lucide-react";
 import {
     Popover,
@@ -55,7 +54,7 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
             <Tooltip>
                 <TooltipTrigger asChild>
                     <a
-                        href="https://www.github.com/Zopsss/CaveVerse"
+                        href="https://github.com/Sanyam0786/CaveVerse"
                         target="_blank"
                         className={buttonCss}
                     >
@@ -64,22 +63,6 @@ const CornerActionButtons = ({ isInGame }: { isInGame: boolean }) => {
                 </TooltipTrigger>
                 <TooltipContent className="bg-primary" customTooltipArrow="bg-primary fill-primary">
                     Github repository
-                </TooltipContent>
-            </Tooltip>
-
-            {/* X */}
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <a
-                        href="https://www.x.com/zopssukiii"
-                        target="_blank"
-                        className={buttonCss}
-                    >
-                        <XLogo fill="#ffffff" />
-                    </a>
-                </TooltipTrigger>
-                <TooltipContent className="bg-primary" customTooltipArrow="bg-primary fill-primary">
-                    X / Twitter
                 </TooltipContent>
             </Tooltip>
         </div>

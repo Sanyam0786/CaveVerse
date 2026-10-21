@@ -25,12 +25,20 @@ const roomSlice = createSlice({
                 hasPassword: boolean;
             }>
         ) => {
-            state.availableRooms.push(action.payload);
+            const exists = state.availableRooms.some(
+                (room) => room.roomId === action.payload.roomId
+            );
+            if (!exists) {
+                state.availableRooms.push(action.payload);
+            }
         },
         removeFromAvailableRooms: (state, action: PayloadAction<string>) => {
             state.availableRooms = state.availableRooms.filter(
                 (room) => room.roomId !== action.payload
             );
+        },
+        clearAvailableRooms: (state) => {
+            state.availableRooms = [];
         },
         setIsLoading: (state, action: PayloadAction<boolean>) => {
             state.isLoading = action.payload;
@@ -42,6 +50,7 @@ export const {
     setRoomJoined,
     addAvailableRooms,
     removeFromAvailableRooms,
+    clearAvailableRooms,
     setIsLoading,
 } = roomSlice.actions;
 
